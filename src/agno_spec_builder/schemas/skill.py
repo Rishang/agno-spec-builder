@@ -20,3 +20,12 @@ class SkillConfig(BaseModel):
             "path loaded via LocalSkills — a single skill folder or a dir of them."
         ),
     )
+    path: str | None = Field(
+        default=None,
+        description=(
+            "Local filesystem path to a skill folder (containing SKILL.md) or a "
+            "directory of skill folders. Resolved relative to the process CWD via "
+            "agno's LocalSkills; use an absolute path or run from the spec file's "
+            "directory for relative paths."
+        ),
+    )

@@ -1,0 +1,162 @@
+# Research desk — one coherent scenario.
+# A user asks a question; the planner breaks it into sub-queries, the
+# researcher gathers facts from the web, and the writer turns the findings
+# into a clear technical writeup. The same three agents are also wired as a
+# coordinate-mode team for single-shot delegation.
+
+project: research-desk
+
+agentos:
+  enabled: true
+  server:
+    port: 8000
+  db:
+    kind: sqlite
+    spec:
+      db_file: agno.db
+
+providers:
+  - name: openrouter
+    kind: models
+    spec:
+      base_url: https://opencode.ai/zen/v1
+      api_key: ${OPENROUTER_API_KEY}
+
+models:
+  - name: default
+    provider: openrouter
+    id: deepseek-v4-flash-free
+    reasoning_effort: low
+
+# --------------------------- SKILLS ---------------------------
+# Skills: inline (`content: |`) or remote (`github: owner/repo/path@ref`).
+# Agents opt in via `skills: [<name>]`.
+skills:
+  - name: teach
+    description: Teach the user a new skill or concept, within this workspace.
+    github: github.com/mattpocock/skills/skills/productivity/teach@main
+
+  - name: handoff
+    description: Handoff a task to the user, who will complete it within this workspace.
+    path: skills/productivity/handoff
+
+  - name: technical-writer
+    description: Write clear technical learning content with mermaid diagrams for anything structural or sequential.
+    content: |
+      ---
+      name: technical-writer
+      description: Write clear technical learning content with mermaid diagrams.
+      ---
+      You are a senior technical content writer who teaches. The goal is the
+      reader *understanding*, not just being informed.
+
+      - Lead with the *why*, then the *how*. Define each term the first time it appears.
+      - Short paragraphs, concrete examples, plain language over jargon.
+      - Whenever structure, flow, or sequence is clearer shown than told,
+        draw a **mermaid diagram** in a ```mermaid fenced code block. Pick the
+        fitting type — `flowchart`, `sequenceDiagram`, `classDiagram`,
+        `stateDiagram-v2`. Keep diagrams small, labeled, and readable.
+      - Close a complex section with a one-line recap.
+      - Don't pad. Every sentence earns its place.
+
+# --------------------------- OUTPUT SCHEMAS ---------------------------
+# The planner returns a structured Plan; the workflow's `research` step
+# fans out over `plan.steps` (one web-search per entry).
+schemas:
+  Plan:
+    fields:
+      effort:
+        type: str
+        description: The effort of the plan. Options are low, medium, high.
+      steps: list[str]   # one web-search query per entry
+
+# --------------------------- AGENTS ---------------------------
+agents:
+  - name: planner
+    model:
+      id: default
+    structured_outputs: false   # OpenCode's DeepSeek route rejects json_schema.
+    use_json_mode: true         # Ask for JSON in the prompt, validate against Plan locally.
+    output_schema: Plan
+    instructions: |
+      Break the user's request into 2-4 independent, specific web-search queries.
+      Each query should stand alone and target one fact or angle. Set `effort`
+      to "high" only when the question genuinely needs multi-source research.
+
+  - name: researcher
+    tools:
+      - bash
+    model:
+      id: default
+    add_datetime_to_context: true
+    instructions: |
+      A web research agent. The current date is in your system context — always
+      use it when building search queries; never default to a year from memory.
+      For ANY question about current facts, versions, or anything you cannot
+      answer with certainty from memory, use the web-fetch skill (then run
+      `seek search` / `seek fetch`). Never guess.
+    skills:
+      - web-fetch
+
+  - name: writer
+    model:
+      id: default
+    markdown: true
+    instructions: |
+      Turn research findings into a clear, concise technical writeup. Use the
+      technical-writer skill: lead with the why, plain language, and mermaid
+      diagrams for anything structural or sequential.
+    skills:
+      - technical-writer
+
+# --------------------------- TEAM ---------------------------
+# Single-shot delegation: the leader routes to researcher, then writer.
+teams:
+  - name: research-desk
+    mode: coordinate
+    model:
+      id: default
+    members:
+      - researcher
+      - writer
+    instructions: |
+      Answer the user's request as a two-stage research desk:
+        1. Delegate fact-finding to researcher.
+        2. Hand its findings to writer for a clear writeup.
+      Return a single consolidated answer — don't expose the internal handoff.
+
+# --------------------------- WORKFLOW ---------------------------
+# Multi-step pipeline: plan → research each sub-query in parallel → summarize.
+# `when: plan.effort == "high"` skips the parallel fan-out for low-effort
+# questions, so a simple lookup goes straight to the writer.
+workflows:
+  - name: research-plan
+    description: Plan sub-queries (structured), then research each in parallel.
+    steps:
+      - run: agent.planner      # -> Plan { effort, steps: [...] }
+        name: plan
+      - name: research
+        run: agent.researcher   # one researcher run per planned query, in parallel
+        when: plan.effort == "high"
+        loop: "plan.steps"      # JMESPath: the planner's `steps` list
+        max_parallel: 3
+      - run: agent.writer       # merges the list of findings into one answer
+        name: summary
+
+# --------------------------- SCHEDULES ---------------------------
+# Weekday morning brief: runs the researcher agent with a fixed payload.
+schedules:
+  - name: morning-brief
+    cron: "0 9 * * 1-5"
+    kind: agent
+    slug: researcher
+    payload:
+      content: One-paragraph tech news brief for today.
+    timezone: UTC
+    max_retries: 1
+
+# --------------------------- TESTS ---------------------------
+tests:
+  - name: capital-lookup
+    target: agent.researcher
+    input: What is the capital of France?

@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from agno_spec_builder.mcp.schema import McpServerConfig
 from agno_spec_builder.schemas.agent import AgentConfig
+from agno_spec_builder.schemas.agentos_config import AgentOsConfig
 from agno_spec_builder.schemas.context import ContextProviderConfig
 from agno_spec_builder.schemas.embedders import EmbedderConfig
 from agno_spec_builder.schemas.knowledge import KnowledgeConfig
@@ -42,6 +43,7 @@ class BaseSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     project: str | None = None
+    agentos: AgentOsConfig = Field(default_factory=AgentOsConfig)
     providers: list[ProviderConfig] = Field(default_factory=list)
     models: ModelCatalog = Field(default_factory=dict)
     embedders: EmbedderCatalog = Field(default_factory=dict)

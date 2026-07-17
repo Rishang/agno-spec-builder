@@ -24,6 +24,7 @@ from agno_spec_builder.builders.workflows import WorkflowBuilder
 from agno_spec_builder.mcp.schema import McpServerConfig
 from agno_spec_builder.mcp.toolkit import McpRunner
 from agno_spec_builder.schemas import (
+    AgentOsConfig,
     EmbedderConfig,
     ModelConfig,
     ProviderConfig,
@@ -31,7 +32,7 @@ from agno_spec_builder.schemas import (
     SkillConfig,
 )
 from agno_spec_builder.skills.cache import SkillCache, skill_cache
-from agno_spec_builder.utils import log
+from agno_spec_builder.utils import expand_env, log
 from agno_spec_builder.workflow.store import FanoutStateStore, InMemoryFanoutStore
 
 
@@ -56,6 +57,7 @@ class Built:
     mcp_runner: McpRunner = field(default_factory=McpRunner)
     db: BaseDb | None = None
     project: str | None = None
+    agentos: AgentOsConfig = field(default_factory=AgentOsConfig)
     tests: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -186,5 +188,94 @@ def build(
         mcp_runner=mcp_runner,
         db=db,
         project=root.project,
+        agentos=root.agentos,
         tests=root.tests,
+    )
+
+
+def _build_agentos_db(config: "AgentOsConfig") -> BaseDb | None:
+    """Resolve the AgentOS database from the declarative ``agentos.db`` block.
+
+    Returns ``None`` when no ``db`` block is declared, signaling
+    :func:`build_agentos` to fall back to ``runtime.db`` (the db injected into
+    :func:`build`). This keeps the existing injection escape hatch intact
+    while letting the YAML pick a backend when it wants to.
+
+    Imports are lazy so the spec-builder package keeps working in
+    environments that pin agno without the db SDKs (sqlalchemy for
+    sqlite/postgres, etc.).
+    """
+    if config.db is None:
+        return None
+
+    kind = config.db.kind
+    spec = expand_env(config.db.spec)
+
+    # Lazy imports — the db SDKs are optional agno extras.
+    if kind == "in_memory":
+        from agno.db.in_memory import InMemoryDb
+
+        return InMemoryDb(**spec)
+    if kind == "sqlite":
+        from agno.db.sqlite import SqliteDb
+
+        return SqliteDb(**spec)
+    if kind == "postgres":
+        from agno.db.postgres import PostgresDb
+
+        return PostgresDb(**spec)
+
+    # Unreachable: AgentOsDbKind is a Literal that pydantic already validated.
+    raise ValueError(f"unsupported agentos db kind: {kind!r}")
+
+
+def build_agentos(runtime: Built, **kwargs: Any):
+    """Construct an :class:`agno.os.AgentOS` from a built runtime graph.
+
+    Returns ``None`` when ``runtime.agentos.enabled`` is ``False`` so callers
+    can write::
+
+        runtime = build(Path("config.yml"))
+        os = build_agentos(runtime)
+        if os is not None:
+            os.serve(app=os.get_app(), **runtime.agentos.server.model_dump())
+
+    Only the components ``AgentOS`` accepts directly are forwarded: agents,
+    teams, workflows, db, and knowledge. Everything else on ``Built``
+    (skills, mcp_servers, schedules, schemas, ...) is owned by the runtime
+    and not duplicated onto the OS instance.
+
+    The db is resolved from ``runtime.agentos.db`` when the YAML declares one;
+    otherwise it falls back to ``runtime.db`` (the db injected into
+    :func:`build`). This lets the YAML swap the AgentOS backend independently
+    of the graph's db — e.g. graph on ``InMemoryDb`` for tests, OS on
+    ``SqliteDb`` for persistence.
+
+    ``**kwargs`` are forwarded verbatim to the ``AgentOS`` constructor, so
+    callers can toggle any OS-level flag the spec doesn't model yet — e.g.
+    ``build_agentos(runtime, authorization=True, tracing=True, scheduler=True)``.
+    ``kwargs`` that collide with the forwarded components (``agents``,
+    ``teams``, ``workflows``, ``db``, ``knowledge``) raise ``TypeError`` from
+    ``AgentOS.__init__`` (duplicate keyword), which is the desired fail-loud
+    behavior.
+    """
+    if not runtime.agentos.enabled:
+        return None
+
+    # Imported lazily so the spec-builder package keeps working in
+    # environments that pin agno without the os extra.
+    from agno.os import AgentOS
+
+    db = _build_agentos_db(runtime.agentos)
+    if db is None:
+        db = runtime.db
+
+    knowledge_list = [k for k in runtime.knowledge.values() if k is not None]
+    return AgentOS(
+        agents=list(runtime.agents.values()),
+        teams=list(runtime.teams.values()),
+        workflows=list(runtime.workflows.values()),
+        db=db,
+        knowledge=knowledge_list or None,
+        **kwargs,
     )

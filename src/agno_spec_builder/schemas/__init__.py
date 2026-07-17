@@ -1,6 +1,7 @@
 """Validated configuration models accepted by :func:`agno_spec_builder.build`."""
 
 from agno_spec_builder.schemas.agent import AgentConfig, ToolHookRef, ToolRef
+from agno_spec_builder.schemas.agentos_config import AgentOsConfig
 from agno_spec_builder.schemas.context import ContextProviderConfig
 from agno_spec_builder.schemas.embedders import EmbedderConfig
 from agno_spec_builder.schemas.knowledge import KnowledgeConfig
@@ -14,6 +15,7 @@ from agno_spec_builder.schemas.workflow import StepConfig, WorkflowConfig
 
 __all__ = [
     "AgentConfig",
+    "AgentOsConfig",
     "ContextProviderConfig",
     "EmbedderConfig",
     "FallbackConfig",

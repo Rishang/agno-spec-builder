@@ -4,6 +4,7 @@ from typing import Any
 import yaml
 from agno.skills.errors import SkillValidationError
 from agno.skills.loaders.base import SkillLoader
+from agno.skills.loaders.local import LocalSkills
 from agno.skills.skill import Skill
 from agno.skills.validator import validate_metadata
 
@@ -79,6 +80,31 @@ class StringSkills(SkillLoader):
             skills.append(skill)
 
         log.debug(f"Loaded {len(skills)} skills from strings")
+        return skills
+
+
+class LocalPathSkills(SkillLoader):
+    """Loads skills from local filesystem paths via agno's :class:`LocalSkills`.
+
+    See https://docs.agno.com/skills/loading-skills — a path may point at a single
+    skill folder (containing SKILL.md) or a directory of skill folders. Validation
+    is disabled so third-party skills with extra frontmatter keys (e.g. Claude
+    Code's `argument-hint`) load on a best-effort basis, matching GithubSkills.
+    """
+
+    def __init__(self, skills: list[SkillConfig]):
+        self.paths = [s.path for s in skills if s.path]
+
+    def load(self) -> list[Skill]:
+        skills: list[Skill] = []
+        for path in self.paths:
+            try:
+                # validate=False mirrors GithubSkills' lenient mode: extra
+                # frontmatter keys are kept as-is rather than rejected.
+                skills.extend(LocalSkills(path, validate=False).load())
+            except Exception as e:
+                log.warning(f"Skipping local skill path {path}: {e}")
+        log.debug(f"Loaded {len(skills)} skills from local paths")
         return skills
 
 

@@ -8,112 +8,19 @@ Build the runtime graph (requires ``openai==2.44.0`` and OPENAI_API_KEY):
 """
 
 import os
+from pathlib import Path
+
+import yaml
 
 from agno_spec_builder import BaseSchema, build
 
-# One plain dictionary is the complete source of truth.
-SPEC = {
-    "project": "support-demo",
-    "providers": [
-        {
-            "name": "openai",
-            "kind": "models",
-            "spec": {"api_key": "$OPENAI_API_KEY"},
-        }
-    ],
-    "models": [
-        {
-            "name": "default",
-            "provider": "openai",
-            "id": "gpt-4o-mini",
-        }
-    ],
-    "vectordb": [
-        {
-            "name": "primary",
-            "provider": "qdrant",
-            "url": "http://localhost:6333",
-        }
-    ],
-    "skills": [
-        {
-            "name": "support-style",
-            "content": """---
-name: support-style
-description: Keep support answers practical and empathetic.
----
-Acknowledge the issue, provide numbered steps, and end with one clear next action.
-""",
-        }
-    ],
-    "schemas": {
-        "SupportReply": {
-            "fields": {
-                "summary": {"type": "str", "description": "One-sentence resolution."},
-                "steps": "list[str]",
-                "escalated": "bool",
-                "ticket_id": "str?",
-            }
-        }
-    },
-    "mcp": [
-        {
-            "name": "local-support",
-            "type": "stdio",
-            "command": "python ./support_mcp_server.py",
-            "include_tools": ["lookup_ticket"],
-        }
-    ],
-    "agents": [
-        {
-            "name": "Support Specialist",
-            "slug": "support-specialist",
-            "model": {"id": "default"},
-            "instructions": "Diagnose the request and return a structured support response.",
-            "skills": ["support-style"],
-            "tools": ["calculator"],
-            "mcp": ["local-support"],
-            "output_schema": "SupportReply",
-        }
-    ],
-    "teams": [
-        {
-            "name": "Support Team",
-            "slug": "support-team",
-            "model": {"id": "default"},
-            "members": ["support-specialist"],
-            "mode": "coordinate",
-        }
-    ],
-    "workflows": [
-        {
-            "name": "Resolve Ticket",
-            "slug": "resolve-ticket",
-            "steps": [{"name": "diagnose", "run": "agent.support-specialist"}],
-        }
-    ],
-    "schedules": [
-        {
-            "name": "daily-support-summary",
-            "cron": "0 18 * * 1-5",
-            "kind": "workflow",
-            "slug": "resolve-ticket",
-            "payload": {"content": "Summarize unresolved support requests."},
-        }
-    ],
-    "tests": [
-        {
-            "name": "password-reset",
-            "target": "agent.support-specialist",
-            "input": "I cannot reset my password.",
-        }
-    ],
-}
+SPEC_PATH = Path(__file__).parent / "example.yml"
 
 
 def validate() -> BaseSchema:
     """Validate the complete root without constructing provider clients."""
-    spec = BaseSchema.model_validate(SPEC)
+    raw = yaml.safe_load(SPEC_PATH.read_text(encoding="utf-8"))
+    spec = BaseSchema.model_validate(raw)
     print("validated project:", spec.project)
     print("agent specs:", [agent.slug for agent in spec.agents])
     print("workflow specs:", [workflow.slug for workflow in spec.workflows])
