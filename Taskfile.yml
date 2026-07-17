@@ -1,0 +1,9 @@
+version: "3"
+tasks:
+  lint:
+    dir: .
+    desc: Type check the project
+    cmds:
+      - uv run ruff format .
+      - uv run ruff check --fix .
+      - uv run ty check --fix --respect-ignore-files .

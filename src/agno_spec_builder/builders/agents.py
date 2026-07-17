@@ -1,6 +1,5 @@
 import copy
 import inspect
-import logging
 
 from agno.agent import Agent
 from agno.db.base import BaseDb
@@ -15,9 +14,7 @@ from agno_spec_builder.schemas import AgentConfig, ModelConfig, ProviderConfig, 
 from agno_spec_builder.skills.cache import SkillCache, skill_cache
 from agno_spec_builder.skills.registry import skill_registry
 from agno_spec_builder.tools import TOOL_REGISTRY
-from agno_spec_builder.utils import resolve
-
-log = logging.getLogger(__name__)
+from agno_spec_builder.utils import log, resolve
 
 
 def _as_ref(entry: str | ToolRef) -> ToolRef:
@@ -74,12 +71,12 @@ async def log_tool_use(function_name, function_call, arguments):
 # Provider name (from YAML) -> "module:ClassName". Imported lazily in build_model
 # so only the selected provider's SDK needs to be installed.
 MODEL_PROVIDERS: dict[str, str] = {
-    "openrouter": "agno.models.openrouter:OpenRouter",
-    "openai": "agno.models.openai:OpenAIChat",
+    "openrouter": "agno_spec_builder.providers.openrouter:OpenRouter",
+    "openai": "agno_spec_builder.providers.openai:OpenAIChat",
     "deepseek": "agno.models.deepseek:DeepSeek",
-    "anthropic": "agno.models.anthropic:Claude",
-    "google": "agno.models.google:Gemini",
-    "gemini": "agno.models.google:Gemini",
+    "anthropic": "agno_spec_builder.providers.claude:Claude",
+    "google": "agno_spec_builder.providers.google:Gemini",
+    "gemini": "agno_spec_builder.providers.google:Gemini",
     "meta": "agno.models.meta:Llama",
     "xai": "agno.models.xai:xAI",
     "aws": "agno.models.aws:AwsBedrock",

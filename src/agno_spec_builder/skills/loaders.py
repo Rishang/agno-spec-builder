@@ -1,4 +1,3 @@
-import logging
 import re
 from typing import Any
 
@@ -10,8 +9,7 @@ from agno.skills.validator import validate_metadata
 
 from agno_spec_builder.schemas import SkillConfig
 from agno_spec_builder.skills.cache import SkillCache, skill_cache
-
-log = logging.getLogger(__name__)
+from agno_spec_builder.utils import log
 
 
 def _parse_skill_md(content: str) -> tuple[dict[str, Any], str]:

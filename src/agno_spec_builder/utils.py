@@ -1,8 +1,11 @@
 """Small helpers shared by schemas and builders."""
 
+import logging
 import os
 import re
 from typing import Any
+
+log = logging.getLogger("agno_spec_builder")
 
 
 def is_identifier(value: str) -> bool:

@@ -31,6 +31,7 @@ from agno_spec_builder.schemas import (
     SkillConfig,
 )
 from agno_spec_builder.skills.cache import SkillCache, skill_cache
+from agno_spec_builder.utils import log
 from agno_spec_builder.workflow.store import FanoutStateStore, InMemoryFanoutStore
 
 
@@ -121,6 +122,8 @@ def build(
     root = _load_source(source)
     db = db or InMemoryDb()
     fanout_store = fanout_store or InMemoryFanoutStore()
+
+    log.info("building graph from spec: project=%s", root.project)
 
     skills = {item.name: item for item in root.skills}
     mcp_servers = {item.name: item for item in root.mcp}

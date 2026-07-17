@@ -2,6 +2,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any, cast
 
 from agno.db.in_memory import InMemoryDb
 from pydantic import ValidationError
@@ -10,7 +11,8 @@ from agno_spec_builder import BaseSchema, build
 from agno_spec_builder.builders.agents import MODEL_PROVIDERS
 from agno_spec_builder.builders.schemas import SchemaBuilder
 from agno_spec_builder.imports import resolve_symbol
-from agno_spec_builder.schemas import ProviderConfig
+from agno_spec_builder.schemas import AgentConfig, ProviderConfig
+from agno_spec_builder.schemas.model import ModelConfig
 
 
 class BuilderTests(unittest.TestCase):
@@ -90,9 +92,9 @@ class BuilderTests(unittest.TestCase):
             }
         )
         person = schemas.output_schema("Person")(name="Ada", email="ada@example.com", address={"city": "London"})
-        self.assertEqual(person.address.city, "London")
-        self.assertEqual(str(person.email), "ada@example.com")
-        self.assertIsNone(person.tags)
+        self.assertEqual(cast(Any, person).address.city, "London")
+        self.assertEqual(str(cast(Any, person).email), "ada@example.com")
+        self.assertIsNone(cast(Any, person).tags)
 
     def test_provider_secrets_expand_from_environment(self):
         os.environ["SPEC_BUILDER_TEST_KEY"] = "secret"
@@ -141,8 +143,8 @@ class BuilderTests(unittest.TestCase):
         with self.assertRaisesRegex(ValidationError, "duplicate agents names"):
             BaseSchema(
                 agents=[
-                    {"name": "One", "slug": "shared", "model": {"provider": "fake", "id": "one"}},
-                    {"name": "Two", "slug": "shared", "model": {"provider": "fake", "id": "two"}},
+                    AgentConfig(name="One", slug="shared", model=ModelConfig(provider="fake", id="one")),
+                    AgentConfig(name="Two", slug="shared", model=ModelConfig(provider="fake", id="two")),
                 ]
             )
 

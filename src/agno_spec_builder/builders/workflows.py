@@ -1,5 +1,4 @@
 import asyncio
-import logging
 from collections.abc import Callable
 from typing import Any, cast
 
@@ -15,11 +14,9 @@ from pydantic import BaseModel
 from agno_spec_builder.builders.schemas import SchemaBuilder
 from agno_spec_builder.mcp.toolkit import McpRunner
 from agno_spec_builder.schemas import StepConfig, WorkflowConfig
-from agno_spec_builder.utils import resolve
+from agno_spec_builder.utils import log, resolve
 from agno_spec_builder.workflow.cel import CELUtil
 from agno_spec_builder.workflow.store import FanoutStateStore, InMemoryFanoutStore
-
-log = logging.getLogger(__name__)
 
 # Agno's own hard cap on Step(workflow=...) nesting (_MAX_NESTED_WORKFLOW_DEPTH in
 # agno.workflow.step) is enforced at run time via a ContextVar — a long acyclic chain of

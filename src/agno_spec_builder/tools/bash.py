@@ -86,7 +86,7 @@ class BashTools(Toolkit):
             )
 
         except Exception as e:
-            import logging
+            from agno_spec_builder.utils import log
 
-            logging.getLogger(__name__).exception("bash tool failed: %r", command)
+            log.exception("bash tool failed: %r", command)
             return f"{type(e).__name__}: {e}"

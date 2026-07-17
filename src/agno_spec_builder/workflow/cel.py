@@ -7,11 +7,9 @@ Usage:
     val = expr.eval(ns)  # raw CEL result
 """
 
-import logging
-
 import celpy
 
-log = logging.getLogger(__name__)
+from agno_spec_builder.utils import log
 
 
 class CELUtil:

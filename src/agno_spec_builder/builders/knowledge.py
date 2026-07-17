@@ -27,10 +27,10 @@ RERANKERS: dict[str, str] = {
 }
 
 EMBEDDERS: dict[str, str] = {
-    "openai": "agno.knowledge.embedder.openai:OpenAIEmbedder",
+    "openai": "agno_spec_builder.providers.openai:OpenAIEmbedder",
     "openai-like": "agno.knowledge.embedder.openai_like:OpenAILikeEmbedder",
-    "google": "agno.knowledge.embedder.google:GeminiEmbedder",
-    "gemini": "agno.knowledge.embedder.google:GeminiEmbedder",
+    "google": "agno_spec_builder.providers.google:GeminiEmbedder",
+    "gemini": "agno_spec_builder.providers.google:GeminiEmbedder",
     "mistral": "agno.knowledge.embedder.mistral:MistralEmbedder",
     "ollama": "agno.knowledge.embedder.ollama:OllamaEmbedder",
     "fastembed": "agno.knowledge.embedder.fastembed:FastEmbedEmbedder",

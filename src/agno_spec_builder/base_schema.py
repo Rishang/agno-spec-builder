@@ -82,7 +82,10 @@ class BaseSchema(BaseModel):
             return value
         if isinstance(value, list):
             for index, item in enumerate(value):
-                if not isinstance(item, dict) or not isinstance(item.get("name"), str) or not item["name"]:
+                if not isinstance(item, dict):
+                    raise ValueError(f"{section}[{index}] needs a non-empty `name`")
+                name = item.get("name")
+                if not isinstance(name, str) or not name:
                     raise ValueError(f"{section}[{index}] needs a non-empty `name`")
                 config_type.model_validate({key: item_value for key, item_value in item.items() if key != "name"})
             return value
