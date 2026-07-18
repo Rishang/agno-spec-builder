@@ -1,19 +1,17 @@
 """Single-file agno-spec-builder example.
 
-Run validation only (no provider SDK or network required):
+Build the runtime graph and start AgentOS:
     uv run python examples/example.py
-
-Build the runtime graph (requires ``openai==2.44.0`` and OPENAI_API_KEY):
-    RUN_BUILD=1 uv run python examples/example.py
 """
 
-import os
 from pathlib import Path
 
 import yaml
+from dotenv import load_dotenv
 
-from agno_spec_builder import BaseSchema, build
+from agno_spec_builder import BaseSchema, build, build_agentos
 
+load_dotenv()
 SPEC_PATH = Path(__file__).parent / "example.yml"
 
 
@@ -39,10 +37,12 @@ def build_runtime(spec: BaseSchema):
 
 if __name__ == "__main__":
     validated = validate()
-    if os.getenv("RUN_BUILD") == "1":
-        build_runtime(validated)
-    else:
-        print("Set RUN_BUILD=1 with OPENAI_API_KEY to construct the runtime graph.")
+    runtime = build_runtime(validated)
+    agent_os = build_agentos(runtime)
+    if agent_os is None:
+        raise RuntimeError("AgentOS is disabled; set agentos.enabled: true in the spec.")
+    print("starting AgentOS:", runtime.agentos.server.host, runtime.agentos.server.port)
+    agent_os.serve(app=agent_os.get_app(), **runtime.agentos.server.model_dump())
 
 # Extension registries stay available from their owning modules:
 # from agno_spec_builder.builders.agents import MODEL_PROVIDERS

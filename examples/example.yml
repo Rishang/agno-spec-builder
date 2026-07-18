@@ -34,7 +34,7 @@ models:
 skills:
   - name: teach
     description: Teach the user a new skill or concept, within this workspace.
-    github: github.com/mattpocock/skills/skills/productivity/teach@main
+    github: mattpocock/skills/skills/productivity/teach@main
 
   - name: handoff
     description: Handoff a task to the user, who will complete it within this workspace.
@@ -96,7 +96,7 @@ agents:
       answer with certainty from memory, use the web-fetch skill (then run
       `seek search` / `seek fetch`). Never guess.
     skills:
-      - web-fetch
+      - teach
 
   - name: writer
     model:
