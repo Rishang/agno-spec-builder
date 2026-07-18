@@ -147,6 +147,24 @@ workflows:
       - run: agent.writer       # merges the list of findings into one answer
         name: summary
 
+# --------------------------- WEBHOOKS ---------------------------
+# Webhooks mount authenticated POST routes onto AgentOS. Each matching trigger
+# receives the full request body through the `{payload}` prompt variable.
+# webhooks:
+#   - name: grafana-alerts
+#     path: grafana-alerts
+#     secret: ${GRAFANA_WEBHOOK_SECRET}
+#     secret_header: X-Grafana-Token
+#     triggers:
+#       - kind: agent
+#         name: researcher
+#         match:
+#           field: alerts[0].labels.alertname
+#           value: CPUHighUsage
+#         prompt: |
+#           Analyze this firing Grafana alert and suggest remediation:
+#           {payload}
+
 # --------------------------- SCHEDULES ---------------------------
 # Weekday morning brief: runs the researcher agent with a fixed payload.
 schedules:

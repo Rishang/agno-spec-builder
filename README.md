@@ -1,6 +1,6 @@
 # agno-spec-builder
 
-Standalone declarative builder for Agno runtime graphs. It converts YAML or Python mappings into agents, teams, workflows, skills, MCP configuration, knowledge bases, context providers, learning machines, schedules, and Pydantic input/output schemas.
+Standalone declarative builder for Agno runtime graphs. It converts YAML or Python mappings into agents, teams, workflows, skills, MCP configuration, knowledge bases, context providers, learning machines, schedules, authenticated webhooks, and Pydantic input/output schemas.
 
 The package does **not** import the parent application's `src` package. It defaults to an Agno `InMemoryDb`, an in-memory skill cache, and an in-memory workflow fan-out state store; applications can inject persistent implementations.
 
@@ -77,7 +77,7 @@ spec = BaseSchema.model_validate(raw_config)
 runtime = await build(spec)
 ```
 
-The authoritative root keys are `project`, `providers`, `models`, `embedders`, `vectordb`, `skills`, `mcp`, `schemas`, `agents`, `teams`, `workflows`, `context`, `knowledge`, `learning`, `schedules`, and `tests`. `models` and `embedders` accept the canonical named-list form or the legacy name-to-config mapping. `project`, top-level `vectordb`, and `tests` are retained on the returned `Built` object even though they do not directly construct components.
+The authoritative root keys are `project`, `providers`, `models`, `embedders`, `vectordb`, `skills`, `mcp`, `schemas`, `agents`, `teams`, `workflows`, `context`, `knowledge`, `learning`, `schedules`, `webhooks`, and `tests`. `models` and `embedders` accept the canonical named-list form or the legacy name-to-config mapping. `project`, top-level `vectordb`, and `tests` are retained on the returned `Built` object even though they do not directly construct components.
 
 Optional `build()` arguments are `db`, `skills_cache`, `tenant_namespace`, and `fanout_store`. The returned `Built` object contains all built objects and validated catalogs plus the graph-owned `db`, `schemas`, and `mcp_runner`.
 
@@ -111,6 +111,41 @@ example, an agent named `researcher` is available at:
 - `GET /a2a/agents/researcher/.well-known/agent-card.json`
 - `POST /a2a/agents/researcher/v1/message:send`
 - `POST /a2a/agents/researcher/v1/message:stream`
+
+## Webhook triggers
+
+When `agentos.enabled` is true, `webhooks` adds authenticated `POST` routes to the
+AgentOS FastAPI app. Each trigger optionally matches the incoming JSON body with a
+JMESPath expression, then invokes a declared agent, team, or workflow. All matching triggers run
+concurrently.
+
+```yaml
+webhooks:
+  - name: grafana-alerts
+    path: grafana-alerts
+    secret: ${GRAFANA_WEBHOOK_SECRET}
+    secret_header: X-Grafana-Token
+    triggers:
+      - kind: agent
+        name: cpu-agent
+        match:
+          field: alerts[0].labels.alertname
+          value: CPUHighUsage
+        prompt: |
+          Analyze this Grafana alert and recommend remediation:
+          {payload}
+```
+
+`path` must be a unique route suffix; every endpoint is mounted below
+`/webhooks/` (for example, `grafana-alerts` becomes
+`/webhooks/grafana-alerts`). `secret_header` defaults to
+`X-Webhook-Secret`; its value is compared with the environment-expanded `secret`.
+Each trigger's `kind` is `agent`, `team`, or `workflow`; its `name` must match a
+slug in the matching catalog. Prompts may contain only the
+`{payload}` template variable, which expands to pretty-printed JSON. Invalid JSON
+returns 422, invalid secrets return 401, and failed agent calls return a server
+error so the sender can retry. A caller-provided `base_app` is preserved and receives
+the declared webhook routes.
 
 Use the resource-specific A2A base URL when connecting a client:
 
@@ -173,11 +208,11 @@ See [`examples/example.py`](examples/example.py) for the single self-contained d
 
 This codebase owns:
 
-- config schemas for agents, teams, workflows/steps, models, providers, embedders, skills, MCP, knowledge, context, learning, and schedules;
+- config schemas for agents, teams, workflows/steps, models, providers, embedders, skills, MCP, knowledge, context, learning, schedules, and webhooks;
 - component builders and top-level orchestration;
 - default tool and hook registries, Bash and knowledge tools;
 - inline/GitHub skill loaders and an injectable cache contract;
 - MCP toolkit/runner and graph-local server catalogs;
 - CEL/JMESPath workflow compilation and injectable resumable fan-out state.
 
-Application routing, persistence models/migrations, queue tasks, tenant runtime, HTTP endpoints, and scheduler execution remain application responsibilities. This separation lets the parent project consume this package later without coupling the package back to `src`.
+Persistence models/migrations, queue tasks, tenant runtime, application-specific HTTP endpoints, and scheduler execution remain application responsibilities. Declarative `webhooks` are the exception: they mount configured, authenticated routes on the AgentOS FastAPI app. This separation lets the parent project consume this package later without coupling the package back to `src`.

@@ -11,6 +11,7 @@ from agno_spec_builder.schemas.provider import ProviderConfig
 from agno_spec_builder.schemas.schedule import ScheduleConfig
 from agno_spec_builder.schemas.skill import SkillConfig
 from agno_spec_builder.schemas.team import TeamConfig
+from agno_spec_builder.schemas.webhook import WebhookConfig, WebhookKind, WebhookMatch, WebhookTrigger
 from agno_spec_builder.schemas.workflow import StepConfig, WorkflowConfig
 
 __all__ = [
@@ -29,5 +30,9 @@ __all__ = [
     "TeamConfig",
     "ToolHookRef",
     "ToolRef",
+    "WebhookConfig",
+    "WebhookKind",
+    "WebhookMatch",
+    "WebhookTrigger",
     "WorkflowConfig",
 ]

@@ -5,9 +5,11 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import Any, cast
-from unittest.mock import call, patch
+from unittest.mock import AsyncMock, call, patch
 
 from agno.db.in_memory import InMemoryDb
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from agno_spec_builder import BaseSchema
@@ -18,6 +20,7 @@ from agno_spec_builder.builders.schemas import SchemaBuilder
 from agno_spec_builder.imports import resolve_symbol
 from agno_spec_builder.schemas import AgentConfig, ProviderConfig
 from agno_spec_builder.schemas.model import ModelConfig
+from agno_spec_builder.webhooks import attach_webhook_routes
 
 try:
     importlib.import_module("agno.os.interfaces.agui")
@@ -33,6 +36,30 @@ def build(*args, **kwargs):
 
 def build_agentos(*args, **kwargs):
     return asyncio.run(async_build_agentos(*args, **kwargs))
+
+
+def webhook_spec() -> dict[str, Any]:
+    return {
+        "agentos": {"enabled": True},
+        "models": {"default": {"provider": "fake", "id": "offline"}},
+        "agents": [{"name": "CPU Agent", "model": {"id": "default"}}],
+        "webhooks": [
+            {
+                "name": "grafana-alerts",
+                "path": "grafana-alerts",
+                "secret": "test-secret",
+                "secret_header": "X-Grafana-Token",
+                "triggers": [
+                    {
+                        "kind": "agent",
+                        "name": "cpu-agent",
+                        "match": {"field": "alerts[0].labels.alertname", "value": "CPUHighUsage"},
+                        "prompt": "Analyze this alert:\n{payload}",
+                    }
+                ],
+            }
+        ],
+    }
 
 
 class BuilderTests(unittest.TestCase):
@@ -96,6 +123,53 @@ class BuilderTests(unittest.TestCase):
         self.assertEqual(runtime.project, "builder-tests")
         self.assertEqual(runtime.vector_dbs["primary"]["provider"], "qdrant")
         self.assertEqual(runtime.tests[0]["name"], "smoke")
+
+    def test_webhook_catalog_validates_agent_references_and_templates(self):
+        runtime = build(webhook_spec())
+        self.assertEqual(set(runtime.webhooks), {"grafana-alerts"})
+
+        invalid_agent = webhook_spec()
+        invalid_agent["webhooks"][0]["triggers"][0]["name"] = "unknown"
+        with self.assertRaisesRegex(ValidationError, "unknown agent"):
+            BaseSchema.model_validate(invalid_agent)
+
+        invalid_template = webhook_spec()
+        invalid_template["webhooks"][0]["triggers"][0]["prompt"] = "Alert for {unknown}"
+        with self.assertRaisesRegex(ValidationError, "support only"):
+            BaseSchema.model_validate(invalid_template)
+
+    def test_webhook_route_authenticates_matches_and_invokes_agent(self):
+        runtime = build(webhook_spec())
+        runtime.mcp_runner.arun_target = AsyncMock(return_value="CPU remediation")  # type: ignore[method-assign]
+        app = attach_webhook_routes(FastAPI(), runtime)
+        client = TestClient(app)
+
+        unauthorized = client.post("/webhooks/grafana-alerts", json={})
+        self.assertEqual(unauthorized.status_code, 401)
+
+        response = client.post(
+            "/webhooks/grafana-alerts",
+            headers={"X-Grafana-Token": "test-secret"},
+            json={"alerts": [{"labels": {"alertname": "CPUHighUsage"}}]},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["results"][0]["analysis"], "CPU remediation")
+        runtime.mcp_runner.arun_target.assert_awaited_once()
+
+        no_match = client.post(
+            "/webhooks/grafana-alerts",
+            headers={"X-Grafana-Token": "test-secret"},
+            json={"alerts": [{"labels": {"alertname": "MemoryHighUsage"}}]},
+        )
+        self.assertEqual(no_match.json(), {"ok": True, "matched": 0, "results": []})
+
+    def test_webhook_routes_reuse_caller_fastapi_app(self):
+        runtime = build(webhook_spec())
+        app = FastAPI()
+        with patch("agno.os.AgentOS") as mock_agent_os:
+            build_agentos(runtime, base_app=app)
+        self.assertIs(mock_agent_os.call_args.kwargs["base_app"], app)
+        self.assertIn("/webhooks/grafana-alerts", {getattr(route, "path", None) for route in app.routes})
 
     def test_schema_builder_supports_nested_and_optional_types(self):
         schemas = SchemaBuilder(

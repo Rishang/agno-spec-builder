@@ -31,6 +31,7 @@ from agno_spec_builder.schemas import (
     ProviderConfig,
     ScheduleConfig,
     SkillConfig,
+    WebhookConfig,
 )
 from agno_spec_builder.skills.cache import SkillCache, skill_cache
 from agno_spec_builder.skills.loaders import LocalPathSkills
@@ -61,6 +62,7 @@ class Built:
     project: str | None = None
     agentos: AgentOsConfig = field(default_factory=AgentOsConfig)
     tests: list[dict[str, Any]] = field(default_factory=list)
+    webhooks: dict[str, WebhookConfig] = field(default_factory=dict)
 
 
 def _catalog(section: dict[str, Any] | list[dict[str, Any]], cls: type[BaseModel]) -> dict[str, Any]:
@@ -153,6 +155,7 @@ def _build_from_root(
     learning = {item.name: build_learning(item, models, knowledge, providers, db) for item in root.learning}
     context = {item.name: build_context_provider(item, models, providers) for item in root.context}
     schedules = {item.name: item for item in root.schedules}
+    webhooks = {item.name: item for item in root.webhooks}
 
     agent_specs = root.agents
     skill_list = list(skills.values())
@@ -201,6 +204,7 @@ def _build_from_root(
         project=root.project,
         agentos=root.agentos,
         tests=root.tests,
+        webhooks=webhooks,
     )
 
 
@@ -290,6 +294,17 @@ def _build_agentos_sync(runtime: Built, kwargs: dict[str, Any]):
         interfaces.extend(AGUI(agent=agent, prefix=f"/agui/agents/{slug}") for slug, agent in runtime.agents.items())
         interfaces.extend(AGUI(team=team, prefix=f"/agui/teams/{slug}") for slug, team in runtime.teams.items())
         kwargs["interfaces"] = interfaces
+
+    if runtime.webhooks:
+        from fastapi import FastAPI
+
+        from agno_spec_builder.webhooks import attach_webhook_routes
+
+        base_app = kwargs.get("base_app")
+        if base_app is None:
+            base_app = FastAPI()
+            kwargs["base_app"] = base_app
+        attach_webhook_routes(base_app, runtime)
 
     return AgentOS(
         id=agentos_id,

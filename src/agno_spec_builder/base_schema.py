@@ -16,6 +16,7 @@ from agno_spec_builder.schemas.provider import ProviderConfig
 from agno_spec_builder.schemas.schedule import ScheduleConfig
 from agno_spec_builder.schemas.skill import SkillConfig
 from agno_spec_builder.schemas.team import TeamConfig
+from agno_spec_builder.schemas.webhook import WebhookConfig
 from agno_spec_builder.schemas.workflow import WorkflowConfig
 
 ModelCatalog = dict[str, ModelConfig] | list[dict[str, Any]]
@@ -58,6 +59,7 @@ class BaseSchema(BaseModel):
     schedules: list[ScheduleConfig] = Field(default_factory=list)
     knowledge: list[KnowledgeConfig] = Field(default_factory=list)
     learning: list[LearningConfig] = Field(default_factory=list)
+    webhooks: list[WebhookConfig] = Field(default_factory=list)
 
     # Catalog fixtures/evaluation cases belong to the document but are not built.
     tests: list[dict[str, Any]] = Field(default_factory=list)
@@ -106,6 +108,7 @@ class BaseSchema(BaseModel):
             "schedules": [entry.name for entry in self.schedules],
             "knowledge": [entry.name for entry in self.knowledge],
             "learning": [entry.name for entry in self.learning],
+            "webhooks": [entry.name for entry in self.webhooks],
         }
         if isinstance(self.vectordb, list):
             sections["vectordb"] = [entry.name for entry in self.vectordb]
@@ -119,4 +122,17 @@ class BaseSchema(BaseModel):
                 duplicates = sorted({name for name in names if names.count(name) > 1})
                 if duplicates:
                     raise ValueError(f"duplicate {section} names: {duplicates}")
+        paths = [entry.endpoint for entry in self.webhooks]
+        duplicate_paths = sorted({path for path in paths if paths.count(path) > 1})
+        if duplicate_paths:
+            raise ValueError(f"duplicate webhook paths: {duplicate_paths}")
+        targets = {
+            "agent": {agent.slug for agent in self.agents},
+            "team": {team.slug for team in self.teams},
+            "workflow": {workflow.slug for workflow in self.workflows},
+        }
+        for webhook in self.webhooks:
+            for trigger in webhook.triggers:
+                if trigger.name not in targets[trigger.kind]:
+                    raise ValueError(f"webhook {webhook.name!r} references unknown {trigger.kind} {trigger.name!r}")
         return self
