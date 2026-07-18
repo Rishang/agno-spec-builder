@@ -16,6 +16,7 @@ from agno_spec_builder.schemas.provider import ProviderConfig
 from agno_spec_builder.schemas.schedule import ScheduleConfig
 from agno_spec_builder.schemas.skill import SkillConfig
 from agno_spec_builder.schemas.team import TeamConfig
+from agno_spec_builder.schemas.toolset import ToolsetConfig
 from agno_spec_builder.schemas.webhook import WebhookConfig
 from agno_spec_builder.schemas.workflow import WorkflowConfig
 
@@ -59,6 +60,7 @@ class BaseSchema(BaseModel):
     schedules: list[ScheduleConfig] = Field(default_factory=list)
     knowledge: list[KnowledgeConfig] = Field(default_factory=list)
     learning: list[LearningConfig] = Field(default_factory=list)
+    toolsets: list[ToolsetConfig] = Field(default_factory=list)
     webhooks: list[WebhookConfig] = Field(default_factory=list)
 
     # Catalog fixtures/evaluation cases belong to the document but are not built.
@@ -100,6 +102,7 @@ class BaseSchema(BaseModel):
         sections = {
             "providers": [entry.name for entry in self.providers],
             "skills": [entry.name for entry in self.skills],
+            "toolsets": [entry.name for entry in self.toolsets],
             "mcp": [entry.name for entry in self.mcp],
             "agents": [entry.slug for entry in self.agents],
             "workflows": [entry.slug for entry in self.workflows],

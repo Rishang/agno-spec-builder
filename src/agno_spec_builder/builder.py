@@ -11,6 +11,7 @@ from agno.agent import Agent
 from agno.db.base import BaseDb
 from agno.db.in_memory import InMemoryDb
 from agno.team import Team
+from agno.tools import Toolkit
 from agno.workflow import Workflow
 from pydantic import BaseModel
 
@@ -35,6 +36,7 @@ from agno_spec_builder.schemas import (
 )
 from agno_spec_builder.skills.cache import SkillCache, skill_cache
 from agno_spec_builder.skills.loaders import LocalPathSkills
+from agno_spec_builder.tools import TOOLSET_REGISTRY
 from agno_spec_builder.utils import expand_env, log
 from agno_spec_builder.workflow.store import FanoutStateStore, InMemoryFanoutStore
 
@@ -62,6 +64,7 @@ class Built:
     project: str | None = None
     agentos: AgentOsConfig = field(default_factory=AgentOsConfig)
     tests: list[dict[str, Any]] = field(default_factory=list)
+    toolsets: dict[str, Toolkit] = field(default_factory=dict)
     webhooks: dict[str, WebhookConfig] = field(default_factory=dict)
 
 
@@ -155,13 +158,22 @@ def _build_from_root(
     learning = {item.name: build_learning(item, models, knowledge, providers, db) for item in root.learning}
     context = {item.name: build_context_provider(item, models, providers) for item in root.context}
     schedules = {item.name: item for item in root.schedules}
+    toolsets: dict[str, Toolkit] = {}
+    for config in root.toolsets:
+        factory = TOOLSET_REGISTRY.get(config.type)
+        if factory is None:
+            raise ValueError(f"unknown toolset type {config.type!r}; available={list(TOOLSET_REGISTRY)}")
+        init = expand_env(config.init)
+        if "name" in init:
+            raise ValueError("toolset `init` cannot set `name`; use the entry's top-level `name`")
+        toolsets[config.name] = factory(name=config.name, **init)
     webhooks = {item.name: item for item in root.webhooks}
 
     agent_specs = root.agents
     skill_list = list(skills.values())
     agents = {
         spec.slug: build_agent(
-            spec, skill_list, schemas, db, knowledge, context, models, learning, providers, skills_cache
+            spec, skill_list, schemas, db, knowledge, context, models, learning, providers, skills_cache, toolsets
         )
         for spec in agent_specs
     }
@@ -204,6 +216,7 @@ def _build_from_root(
         project=root.project,
         agentos=root.agentos,
         tests=root.tests,
+        toolsets=toolsets,
         webhooks=webhooks,
     )
 

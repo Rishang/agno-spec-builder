@@ -21,6 +21,7 @@ from agno_spec_builder.builders.schemas import SchemaBuilder
 from agno_spec_builder.imports import resolve_symbol
 from agno_spec_builder.schemas import AgentConfig, ProviderConfig
 from agno_spec_builder.schemas.model import ModelConfig
+from agno_spec_builder.tools import TOOLSET_REGISTRY
 from agno_spec_builder.tools.a2a import A2ATools
 from agno_spec_builder.webhooks import attach_webhook_routes
 
@@ -139,6 +140,62 @@ class BuilderTests(unittest.TestCase):
         invalid_template["webhooks"][0]["triggers"][0]["prompt"] = "Alert for {unknown}"
         with self.assertRaisesRegex(ValidationError, "support only"):
             BaseSchema.model_validate(invalid_template)
+
+    def test_a2a_toolset_is_available_to_declaring_agent(self):
+        runtime = build(
+            {
+                "models": {"default": {"provider": "fake", "id": "offline"}},
+                "toolsets": [
+                    {
+                        "name": "research-agent",
+                        "type": "a2a",
+                        "url": "http://localhost:8080/a2a",
+                        "headers": {"X-Tenant": "acme"},
+                    }
+                ],
+                "agents": [
+                    {
+                        "name": "Research Coordinator",
+                        "model": {"id": "default"},
+                        "tools": ["research-agent"],
+                    }
+                ],
+            }
+        )
+
+        self.assertEqual(runtime.toolsets["research-agent"].name, "research-agent")
+        self.assertIn(runtime.toolsets["research-agent"], runtime.agents["research-coordinator"].tools)
+
+    def test_TOOLSET_REGISTRY_allow_application_extensions(self):
+        previous = TOOLSET_REGISTRY.get("partner-a2a")
+        TOOLSET_REGISTRY["partner-a2a"] = A2ATools
+        try:
+            runtime = build(
+                {
+                    "models": {"default": {"provider": "fake", "id": "offline"}},
+                    "toolsets": [
+                        {
+                            "name": "partner-agent",
+                            "type": "partner-a2a",
+                            "init": {"url": "http://partner.example/a2a", "headers": {"X-Tenant": "acme"}},
+                        }
+                    ],
+                    "agents": [
+                        {
+                            "name": "Coordinator",
+                            "model": {"id": "default"},
+                            "tools": ["partner-agent"],
+                        }
+                    ],
+                }
+            )
+        finally:
+            if previous is None:
+                TOOLSET_REGISTRY.pop("partner-a2a", None)
+            else:
+                TOOLSET_REGISTRY["partner-a2a"] = previous
+
+        self.assertEqual(runtime.toolsets["partner-agent"].url, "http://partner.example/a2a")
 
     def test_webhook_route_authenticates_matches_and_invokes_agent(self):
         runtime = build(webhook_spec())

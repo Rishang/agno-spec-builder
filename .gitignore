@@ -9,4 +9,5 @@ dist/
 *.db
 *.log
 tmp/
-*.tmp
+*.tmp.*
+*/evals/*.json

@@ -6,6 +6,7 @@ from agno.db.base import BaseDb
 from agno.models.base import Model
 from agno.models.fallback import FallbackConfig as AgnoFallbackConfig
 from agno.skills import Skills
+from agno.tools import Toolkit
 
 from agno_spec_builder.builders.schemas import SchemaBuilder
 from agno_spec_builder.hooks import HOOK_REGISTRY, TOOL_HOOK_BUILDERS
@@ -127,6 +128,7 @@ def build_agent(
     learning: dict | None = None,
     providers: dict[str, ProviderConfig] | None = None,
     skills_cache: SkillCache = skill_cache,
+    toolsets: dict[str, Toolkit] | None = None,
 ) -> Agent:
     # Only attach capabilities the agent actually declares. An empty Skills
     # loader still exposes get_skill_* tools, so a no-skill agent would invent
@@ -139,6 +141,7 @@ def build_agent(
     if config.skills:
         kwargs["skills"] = Skills(loaders=skill_registry(config.skills, skills, skills_cache))
     tools = []
+    available_tools = {**TOOL_REGISTRY, **(toolsets or {})}
     for entry in map(_as_ref, config.tools):
         # agno reasoning toolkits need live objects, so they build here instead
         # of living in TOOL_REGISTRY. include/exclude filtering applies as usual.
@@ -162,7 +165,7 @@ def build_agent(
                 raise ValueError(f"agent {config.slug!r}: knowledge-writer needs a `knowledge:` catalog")
             tools += filter_tools([KnowledgeWriterTools(dict(knowledge))], entry)
         else:
-            tools += filter_tools(resolve([entry.name], TOOL_REGISTRY), entry)
+            tools += filter_tools(resolve([entry.name], available_tools), entry)
     # Each named ContextProvider contributes tools (query_<name> or its
     # underlying toolset, per its mode), allow/drop-filtered per agent.
     for entry in map(_as_ref, config.context):

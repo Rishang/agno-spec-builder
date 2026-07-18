@@ -66,7 +66,8 @@ class AgentConfig(BaseModel):
     tools: list[str | ToolRef] = Field(
         default_factory=list,
         description=(
-            "Tool names (from TOOL_REGISTRY) this agent can call. An entry can also "
+            "Tool names (from TOOL_REGISTRY or the top-level `toolsets:` catalog) "
+            "this agent can call. An entry can also "
             "be {name, include_tools, exclude_tools} to allow/drop individual "
             "functions of a toolkit for this agent only."
         ),

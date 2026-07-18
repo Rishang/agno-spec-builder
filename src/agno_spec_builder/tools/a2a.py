@@ -31,6 +31,8 @@ class A2ATools(Toolkit):
     ) -> None:
         self.url = url
         self.headers = expand_env(headers or {})
+        self.timeout = timeout
+        self.protocol = protocol
         self.client = A2AClient(url, timeout=timeout, protocol=protocol)
         super().__init__(name=name or _default_name(url), tools=[self.ask], **kwargs)
 
@@ -41,7 +43,7 @@ class A2ATools(Toolkit):
         user_id: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> Any:
-        """Send a message to the remote A2A agent and return its response content."""
+        """Send a message to this toolset's configured remote A2A endpoint."""
         response = await self.client.send_message(
             message,
             context_id=context_id,

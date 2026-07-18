@@ -77,9 +77,56 @@ spec = BaseSchema.model_validate(raw_config)
 runtime = await build(spec)
 ```
 
-The authoritative root keys are `project`, `providers`, `models`, `embedders`, `vectordb`, `skills`, `mcp`, `schemas`, `agents`, `teams`, `workflows`, `context`, `knowledge`, `learning`, `schedules`, `webhooks`, and `tests`. `models` and `embedders` accept the canonical named-list form or the legacy name-to-config mapping. `project`, top-level `vectordb`, and `tests` are retained on the returned `Built` object even though they do not directly construct components.
+The authoritative root keys are `project`, `providers`, `models`, `embedders`, `vectordb`, `skills`, `toolsets`, `mcp`, `schemas`, `agents`, `teams`, `workflows`, `context`, `knowledge`, `learning`, `schedules`, `webhooks`, and `tests`. `models` and `embedders` accept the canonical named-list form or the legacy name-to-config mapping. `project`, top-level `vectordb`, and `tests` are retained on the returned `Built` object even though they do not directly construct components.
 
 Optional `build()` arguments are `db`, `skills_cache`, `tenant_namespace`, and `fanout_store`. The returned `Built` object contains all built objects and validated catalogs plus the graph-owned `db`, `schemas`, and `mcp_runner`.
+
+## A2A toolsets
+
+Declare a remote A2A client once, then attach it to an agent through `tools`:
+
+```yaml
+toolsets:
+  - name: research-agent
+    type: a2a
+    init:
+      url: http://localhost:8080/a2a
+      headers:
+        Authorization: "Bearer ${env.A2A_TOKEN}"
+        X-Tenant: acme
+
+agents:
+  - name: Coordinator
+    model: {id: fast}
+    tools: [research-agent]
+```
+
+The A2A toolset exposes an async `ask` tool that sends a message to the configured
+endpoint. Its headers support `${env.VAR}` expansion when the graph is built.
+
+Applications can register additional types before calling `build()`:
+
+```python
+from agno_spec_builder.tools import TOOLSET_REGISTRY
+from my_app.tools import JiraTools
+
+TOOLSET_REGISTRY["jira"] = JiraTools
+```
+
+Those entries use `type: jira` and pass the environment-expanded `init` mapping
+as constructor keyword arguments. The builder always supplies the YAML toolset
+`name` as the toolkit's `name` argument.
+
+## Interactive agent CLI
+
+Run any declared agent in Agno's interactive terminal interface:
+
+```bash
+agno-spec-builder examples/example.yml researcher --stream
+```
+
+The second argument is the agent slug. Use `--session-id` or `--user-id` to
+continue an Agno session or identify the terminal user.
 
 ## Serve with AgentOS and A2A
 

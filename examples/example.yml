@@ -63,6 +63,17 @@ skills:
       - Close a complex section with a one-line recap.
       - Don't pad. Every sentence earns its place.
 
+# --------------------------- TOOLSETS ---------------------------
+# A named remote A2A agent becomes available through `tools: [research-agent]`.
+# toolsets:
+#   - name: research-agent
+#     type: a2a
+#     init:
+#       url: http://localhost:8080/a2a
+#       headers:
+#         Authorization: "Bearer ${env.A2A_TOKEN}"
+#         X-Tenant: acme
+
 # --------------------------- OUTPUT SCHEMAS ---------------------------
 # The planner returns a structured Plan; the workflow's `research` step
 # fans out over `plan.steps` (one web-search per entry).
