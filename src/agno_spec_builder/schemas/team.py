@@ -18,6 +18,13 @@ class TeamConfig(BaseModel):
         default="",
         description=("Stable id used to reference this team elsewhere. Defaults to slugify(name)."),
     )
+    background: bool = Field(
+        default=False,
+        description=(
+            "Default for Agno's invocation-time `background` option when this team is run "
+            "through Built.arun(); callers may override it per invocation."
+        ),
+    )
     model: ModelConfig | None = Field(
         default=None,
         description="Leader model. Optional — some team modes don't need one.",
@@ -46,5 +53,5 @@ class TeamConfig(BaseModel):
         # name/mode/model/members/output_schema wired explicitly by the builder;
         # everything else (instructions, description, followups, debug_mode, ...)
         # passes through to agno's Team constructor.
-        _WIRE = {"name", "slug", "members", "model", "mode", "output_schema", "skills"}
+        _WIRE = {"name", "slug", "background", "members", "model", "mode", "output_schema", "skills"}
         return self.model_dump(exclude=_WIRE, exclude_none=True, exclude_defaults=True)

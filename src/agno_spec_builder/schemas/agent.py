@@ -59,6 +59,13 @@ class AgentConfig(BaseModel):
         default="",
         description=("Stable id used for team delegation and run tracking. Defaults to slugify(name)."),
     )
+    background: bool = Field(
+        default=False,
+        description=(
+            "Default for Agno's invocation-time `background` option when this agent is run "
+            "through Built.arun(); callers may override it per invocation."
+        ),
+    )
     skills: list[str] = Field(
         default_factory=list,
         description=("Skill names (from the top-level `skills:` catalog) this agent can use."),
@@ -189,6 +196,7 @@ class AgentConfig(BaseModel):
         _WIRE = {
             "model",
             "slug",
+            "background",
             "skills",
             "tools",
             "workflow_tools",

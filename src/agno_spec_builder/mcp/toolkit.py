@@ -111,9 +111,9 @@ class McpRunner:
     async def invoke(self, agent: Agent, input: str, **kwargs: Any):
         opts = self._run_kwargs(kwargs)
         if not self.needs(agent):
-            return await agent.arun(input, **opts)
+            return await agent.arun(input, stream=False, **opts)
         async with McpToolkit.connect(self.names(agent), self.servers) as tools:
-            return await self._with_tools(agent, tools).arun(input, **opts)
+            return await self._with_tools(agent, tools).arun(input, stream=False, **opts)
 
     async def stream(self, agent: Agent, input: str, **kwargs: Any):
         opts = self._run_kwargs(kwargs)
@@ -128,9 +128,11 @@ class McpRunner:
     async def arun_target(self, obj: Agent | Team | Workflow, inp: str, **kwargs) -> Any:
         # Workflow (nested-workflow steps) has no MCP tool injection of its own —
         # falls straight to obj.arun(); its sub-steps resolve their own MCP needs.
+        # This is the result-returning counterpart to astream_target(), so override
+        # a resource-level stream default rather than attempting to await its iterator.
         if isinstance(obj, Agent) and self.needs(obj):
             return (await self.invoke(obj, inp, **kwargs)).content
-        return (await obj.arun(inp, **kwargs)).content
+        return (await obj.arun(inp, stream=False, **self._run_kwargs(kwargs))).content
 
     async def astream_target(self, obj: Agent | Team | Workflow, inp: str, **kwargs: Any):
         """Streaming twin of arun_target: yield a child agent/team/workflow's run

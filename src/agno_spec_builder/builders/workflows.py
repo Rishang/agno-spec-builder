@@ -104,11 +104,15 @@ def _emit(c: StepConfig, ns: dict, result) -> CustomEvent | None:
 class WorkflowStepBuilder:
     """Compiles a single StepConfig into an agno Step/Parallel.
 
-    Grammar (one of `run` / `parallel` / `case` per step):
+    Grammar (one execution node per step):
       - run: "agent.<slug>" | "team.<slug>" | "workflow.<slug>"  -> Step(agent|team|workflow=...)
       - parallel: [ <step>, ... ]             -> Parallel(...) static branches
       - case: "<CEL expr>"                    -> Step(executor=...) routes to matching branch
         branches: { key: <step>, ... }
+      - router: "<CEL expr>" | true           -> native Router over `branches` or `choices`
+        branches: { key: <step-or-container>, ... }  # key supplies a missing step name
+        choices: [ <step-or-container>, ... ]        # advanced/backward-compatible form
+      - repeat: [ <step>, ... ]               -> native condition-driven Loop
 
     Modifiers on a `run` step:
       - loop: "<jmespath>"    fan-out: run the agent/team/workflow once per item in
@@ -141,7 +145,7 @@ class WorkflowStepBuilder:
         self.mcp_runner = mcp_runner
         self.fanout_store = fanout_store
 
-    def build(self, c: StepConfig) -> Step | Parallel:
+    def build(self, c: StepConfig) -> Step | Parallel | Router | Loop:
         return self._m_one(c)
 
     def _m_one(self, c: StepConfig):
@@ -216,15 +220,19 @@ class WorkflowStepBuilder:
         return Step(name=c.name, executor=case_exec, **c.step_kwargs())
 
     def _m_router(self, c: StepConfig) -> Router:
-        """agno-native Router: a CEL `router` selector returns a `branches` key (or
-        list of keys); the matching branch step(s) run. Unlike `case` (a custom
-        single-dispatch executor), this is agno's Router node, so it supports
-        native multi-selection and step-level HITL (requires_confirmation /
-        human_review, passed through via step_kwargs) that a raw executor can't.
-        Each branch is named after its key so the CEL selector can address it."""
-        assert c.router  # guaranteed by _m_one
-        choices = [self._m_one(_named_branch(k, v)) for k, v in c.branches.items()]
-        return Router(name=c.name, selector=c.router, choices=choices, **c.step_kwargs())
+        """Build an agno-native Router from declarative choice nodes.
+
+        `router: true` selects Agno's HITL mode by passing selector=None;
+        string values remain native CEL selectors. `choices` preserves each
+        node's own name and recursively supports Step, Parallel, Loop, and
+        nested Router choices. Keyed `branches` are normalized with their key
+        as an omitted name and compiled recursively in the same way.
+        """
+        assert c.router is not None  # guaranteed by _m_one
+        choice_configs = c.choices or [_named_branch(key, value) for key, value in c.branches.items()]
+        choices = [self._m_one(choice) for choice in choice_configs]
+        selector = None if c.router is True else c.router
+        return Router(name=c.name, selector=selector, choices=choices, **c.step_kwargs())
 
     def _m_repeat(self, c: StepConfig) -> Loop:
         """agno-native Loop: run `repeat` sub-steps until the `until` CEL

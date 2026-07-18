@@ -66,6 +66,65 @@ class Built:
     tests: list[dict[str, Any]] = field(default_factory=list)
     toolsets: dict[str, Toolkit] = field(default_factory=dict)
     webhooks: dict[str, WebhookConfig] = field(default_factory=dict)
+    background_defaults: dict[str, bool] = field(default_factory=dict)
+
+    def _target(self, ref: str) -> Agent | Team | Workflow:
+        """Resolve ``agent.<slug>``, ``team.<slug>``, or ``workflow.<slug>``."""
+        kind, separator, slug = ref.partition(".")
+        catalogs = {"agent": self.agents, "team": self.teams, "workflow": self.workflows}
+        if not separator or not slug or kind not in catalogs:
+            raise ValueError("target must be `agent.<slug>`, `team.<slug>`, or `workflow.<slug>`")
+        target = catalogs[kind].get(slug)
+        if target is None:
+            raise ValueError(f"unknown {kind} target {slug!r}; available={list(catalogs[kind])}")
+        return target
+
+    async def arun(
+        self,
+        target: str,
+        input: Any = None,
+        *,
+        background: bool | None = None,
+        stream: bool | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        """Run a built resource with its declarative background default.
+
+        ``target`` uses the same ``kind.slug`` references as workflow steps. A
+        per-call ``background`` value overrides the resource's YAML setting.
+        ``stream=True`` plus background execution returns Agno's resumable event
+        iterator; AgentOS clients can reconnect through the native ``/resume``
+        route. Non-streaming background calls return a PENDING run output.
+        """
+        resource = self._target(target)
+        run_in_background = self.background_defaults.get(target, False) if background is None else background
+        run_kwargs = {**kwargs, "background": run_in_background}
+        if stream is not None:
+            run_kwargs["stream"] = stream
+
+        effective_stream = bool(getattr(resource, "stream", False)) if stream is None else stream
+        if effective_stream:
+            run_kwargs["stream"] = True
+        if isinstance(resource, Agent) and self.mcp_runner.needs(resource):
+            if effective_stream:
+                return self.mcp_runner.stream(resource, input, **run_kwargs)
+            return await self.mcp_runner.invoke(resource, input, **run_kwargs)
+        # Agno returns an async iterator, not an awaitable, for stream=True.
+        # Keep the outer coroutine awaitable while handing that iterator to callers.
+        result = resource.arun(input, **run_kwargs)
+        return result if effective_stream else await result
+
+    async def aget_run_output(
+        self,
+        target: str,
+        run_id: str,
+        *,
+        session_id: str | None = None,
+        user_id: str | None = None,
+    ) -> Any:
+        """Poll a background run using the target resource's persisted run state."""
+        resource = self._target(target)
+        return await resource.aget_run_output(run_id=run_id, session_id=session_id, user_id=user_id)
 
 
 def _catalog(section: dict[str, Any] | list[dict[str, Any]], cls: type[BaseModel]) -> dict[str, Any]:
@@ -218,6 +277,11 @@ def _build_from_root(
         tests=root.tests,
         toolsets=toolsets,
         webhooks=webhooks,
+        background_defaults={
+            **{f"agent.{spec.slug}": spec.background for spec in agent_specs},
+            **{f"team.{spec.slug}": spec.background for spec in team_specs},
+            **{f"workflow.{spec.slug}": spec.background for spec in root.workflows},
+        },
     )
 
 

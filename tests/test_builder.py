@@ -197,6 +197,24 @@ class BuilderTests(unittest.TestCase):
 
         self.assertEqual(runtime.toolsets["partner-agent"].url, "http://partner.example/a2a")
 
+    def test_mcp_runner_result_helpers_override_resource_stream_defaults(self):
+        runtime = build(
+            {
+                "models": {"default": {"provider": "fake", "id": "offline"}},
+                "agents": [{"name": "Streaming Agent", "model": {"id": "default"}, "stream": True}],
+            }
+        )
+        agent = runtime.agents["streaming-agent"]
+        mocked = AsyncMock(return_value=SimpleNamespace(content="result"))
+
+        async def exercise():
+            with patch.object(agent, "arun", mocked):
+                self.assertEqual((await runtime.mcp_runner.invoke(agent, "hello")).content, "result")
+                self.assertEqual(await runtime.mcp_runner.arun_target(agent, "hello"), "result")
+
+        asyncio.run(exercise())
+        self.assertEqual(mocked.await_args_list, [call("hello", stream=False), call("hello", stream=False)])
+
     def test_webhook_route_authenticates_matches_and_invokes_agent(self):
         runtime = build(webhook_spec())
         runtime.mcp_runner.arun_target = AsyncMock(return_value="CPU remediation")  # type: ignore[method-assign]

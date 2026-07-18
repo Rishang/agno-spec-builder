@@ -79,6 +79,125 @@ runtime = await build(spec)
 
 The authoritative root keys are `project`, `providers`, `models`, `embedders`, `vectordb`, `skills`, `toolsets`, `mcp`, `schemas`, `agents`, `teams`, `workflows`, `context`, `knowledge`, `learning`, `schedules`, `webhooks`, and `tests`. `models` and `embedders` accept the canonical named-list form or the legacy name-to-config mapping. `project`, top-level `vectordb`, and `tests` are retained on the returned `Built` object even though they do not directly construct components.
 
+## Workflow routers
+
+Use a keyed `branches` mapping for the simplest Agno-native Router. The branch key is automatically used as the nested step name, so `name` is optional inside the mapping:
+
+```yaml
+- name: research_route
+  router: 'input.contains("tech") ? "tech" : "finance"'
+  branches:
+    tech:
+      run: agent.tech-researcher
+    finance:
+      run: agent.finance-researcher
+```
+
+Agno exposes `input`, `previous_step_content`, `previous_step_outputs`, `additional_data`, `session_state`, and the available choice-name list as `step_choices` to Router CEL selectors. For example, `router: 'step_choices[input.contains("deep") ? 1 : 0]'` selects by branch position without repeating names.
+
+Use `router: true` for selector-free HITL routing in which Agno asks the user to choose a route. It implicitly enables user input, and `message` is the compact prompt alias:
+
+```yaml
+- name: choose_route
+  router: true
+  message: Choose a research path
+  branches:
+    tech: {run: agent.tech-researcher}
+    finance: {run: agent.finance-researcher}
+```
+
+Use the optional `hitl` mapping for compact advanced settings:
+
+```yaml
+- name: choose_route
+  router: true
+  branches:
+    tech: {run: agent.tech-researcher}
+    finance: {run: agent.finance-researcher}
+  hitl:
+    message: Choose one or more research paths
+    allow_multiple_selections: true
+    max_retries: 3
+    on_reject: retry
+```
+
+Selector-based Routers use a non-empty CEL string and cannot use `message` or `hitl`. Existing explicit Agno fields remain supported for compatibility: `requires_confirmation`, `confirmation_message`, `requires_user_input`, `user_input_message`, `allow_multiple_selections`, `user_input_schema`, `requires_output_review`, `output_review_message`, `hitl_max_retries`, `on_reject` (`skip`, `cancel`, or `retry`), and `human_review`. Do not combine compact aliases with their explicit equivalent (for example, `message` and `user_input_message`).
+
+The list-form `choices` grammar remains available for advanced and backward-compatible declarations. Choices are compiled recursively, so regular steps, Loops, Parallel nodes, and nested Routers retain native Agno behavior:
+
+```yaml
+- name: research_router
+  router: 'step_choices[input.contains("deep") ? 1 : 0]'
+  choices:
+    - name: quick_research
+      run: agent.researcher
+    - name: deep_research
+      repeat:
+        - name: research_pass
+          run: agent.researcher
+      until: current_iteration >= 2
+      max_iterations: 3
+```
+
+`repeat` maps to Agno `Loop.steps`, `until` maps to its CEL `end_condition`, and `max_iterations` sets its iteration cap. Use either `branches` or `choices` on a Router, not both.
+
+For simpler single-route dispatch, `case` remains available and uses the same keyed `branches` mapping and omitted-name shorthand:
+
+```yaml
+- name: research_case
+  case: 'plan.effort == "high" ? "deep" : "quick"'
+  branches:
+    quick:
+      run: agent.researcher
+    deep:
+      run: team.research-team
+```
+
+## Background execution
+
+Set `background: true` on an agent, team, or workflow to make it the default when invoking that resource through `Built.arun()`:
+
+```yaml
+agents:
+  - name: Researcher
+    model: {id: fast}
+    background: true
+```
+
+A non-streaming background invocation returns an Agno `PENDING` run output immediately. Poll the same resource using its run and session identifiers:
+
+```python
+import asyncio
+from agno.run.base import RunStatus
+
+pending = await runtime.arun("agent.researcher", "Research quantum computing trends")
+
+while True:
+    result = await runtime.aget_run_output(
+        "agent.researcher",
+        pending.run_id,
+        session_id=pending.session_id,
+    )
+    if result and result.status in {RunStatus.completed, RunStatus.error, RunStatus.cancelled}:
+        break
+    await asyncio.sleep(1)
+```
+
+The YAML default can be overridden per call with `background=False` or `True`. Pass `stream=True` together with background execution to request Agno resumable streaming:
+
+```python
+events = await runtime.arun(
+    "workflow.adaptive-research",
+    "Deep research on compiler design",
+    background=True,
+    stream=True,
+)
+async for event in events:
+    print(event)
+```
+
+Resumable SSE requires AgentOS. HTTP clients start the run with `background=true&stream=true`, retain `run_id`, `session_id`, and the latest `event_index`, then reconnect to `POST /agents/{id}/runs/{run_id}/resume` (or the analogous `/teams/` or `/workflows/` route). The per-resource YAML default applies to `Built.arun()`; AgentOS requests remain explicit and must send their own `background` flag. Background execution requires a database: every built resource receives the graph database, but inject a persistent database instead of the default `InMemoryDb` when runs must survive process restarts.
+
 Optional `build()` arguments are `db`, `skills_cache`, `tenant_namespace`, and `fanout_store`. The returned `Built` object contains all built objects and validated catalogs plus the graph-owned `db`, `schemas`, and `mcp_runner`.
 
 ## A2A toolsets

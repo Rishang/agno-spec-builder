@@ -158,6 +158,42 @@ workflows:
       - run: agent.writer       # merges the list of findings into one answer
         name: summary
 
+  # Native Agno Router: branch keys become choice names, so nested `name`
+  # fields are optional. The CEL selector can return those keys directly.
+  - name: adaptive-research
+    description: Route between a quick lookup and iterative deep research.
+    # Built.arun("workflow.adaptive-research", ...) now defaults to fire-and-forget.
+    # AgentOS callers still send background=true per request for resumable SSE.
+    background: true
+    steps:
+      - name: research_router
+        router: 'input.contains("deep") ? "deep_research" : "quick_research"'
+        branches:
+          quick_research:
+            run: agent.researcher
+          deep_research:
+            repeat:
+              - name: research_pass
+                run: agent.researcher
+            until: current_iteration >= 2
+            max_iterations: 3
+      - name: publish
+        run: agent.writer
+
+  # Selector-free native Router: `router: true` pauses and asks the user which
+  # branch(es) to run; user input is implicit and `message` is the compact prompt.
+  - name: user-selected-research
+    description: Let the user select a research path.
+    steps:
+      - name: choose_route
+        router: true
+        message: Choose a research path
+        branches:
+          research:
+            run: agent.researcher
+          writing:
+            run: agent.writer
+
 # --------------------------- WEBHOOKS ---------------------------
 # Webhooks mount authenticated POST routes onto AgentOS. Each matching trigger
 # receives the full request body through the `{payload}` prompt variable.
