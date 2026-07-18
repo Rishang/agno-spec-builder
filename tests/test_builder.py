@@ -13,6 +13,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+import agno_spec_builder.tools as tools_module
 from agno_spec_builder import BaseSchema
 from agno_spec_builder import build as async_build
 from agno_spec_builder import build_agentos as async_build_agentos
@@ -140,6 +141,78 @@ class BuilderTests(unittest.TestCase):
         invalid_template["webhooks"][0]["triggers"][0]["prompt"] = "Alert for {unknown}"
         with self.assertRaisesRegex(ValidationError, "support only"):
             BaseSchema.model_validate(invalid_template)
+
+    def test_audio_model_and_toolsets_are_wired_into_an_agent(self):
+        class FakeToolkit:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+                self.name = "fake-toolkit"
+                self.functions = {}
+
+        with patch.object(tools_module, "resolve_symbol", return_value=FakeToolkit) as resolve_toolset:
+            runtime = build(
+                {
+                    "models": {
+                        "audio": {
+                            "provider": "openai",
+                            "id": "gpt-audio",
+                            "modalities": ["text", "audio"],
+                            "audio": {"voice": "sage", "format": "wav"},
+                        },
+                        "podcast": {"provider": "openai-responses", "id": "gpt-5.2"},
+                    },
+                    "toolsets": [
+                        {
+                            "name": "transcription",
+                            "type": "openai",
+                            "init": {
+                                "transcription_model": "gpt-4o-transcribe",
+                                "enable_image_generation": False,
+                                "enable_speech_generation": False,
+                            },
+                        },
+                        {
+                            "name": "podcast-voice",
+                            "type": "elevenlabs",
+                            "init": {"voice_id": "voice-id", "model_id": "eleven_multilingual_v2"},
+                        },
+                        {"name": "web-research", "type": "firecrawl"},
+                    ],
+                    "agents": [
+                        {
+                            "name": "Audio Agent",
+                            "model": {"id": "audio"},
+                            "tools": ["transcription", "podcast-voice", "web-research"],
+                        },
+                        {"name": "Podcast Agent", "model": {"id": "podcast"}},
+                    ],
+                }
+            )
+
+        model = runtime.agents["audio-agent"].model
+        self.assertEqual(model.modalities, ["text", "audio"])
+        self.assertEqual(model.audio, {"voice": "sage", "format": "wav"})
+        self.assertEqual(runtime.agents["podcast-agent"].model.id, "gpt-5.2")
+        self.assertEqual(
+            [tool.kwargs for tool in runtime.agents["audio-agent"].tools],
+            [
+                {
+                    "transcription_model": "gpt-4o-transcribe",
+                    "enable_image_generation": False,
+                    "enable_speech_generation": False,
+                },
+                {"voice_id": "voice-id", "model_id": "eleven_multilingual_v2"},
+                {},
+            ],
+        )
+        self.assertEqual(
+            [call.args[0] for call in resolve_toolset.call_args_list],
+            [
+                "agno.tools.openai:OpenAITools",
+                "agno.tools.eleven_labs:ElevenLabsTools",
+                "agno.tools.firecrawl:FirecrawlTools",
+            ],
+        )
 
     def test_a2a_toolset_is_available_to_declaring_agent(self):
         runtime = build(

@@ -74,6 +74,7 @@ async def log_tool_use(function_name, function_call, arguments):
 MODEL_PROVIDERS: dict[str, str] = {
     "openrouter": "agno_spec_builder.providers.openrouter:OpenRouter",
     "openai": "agno_spec_builder.providers.openai:OpenAIChat",
+    "openai-responses": "agno.models.openai.responses:OpenAIResponses",
     "deepseek": "agno.models.deepseek:DeepSeek",
     "anthropic": "agno_spec_builder.providers.claude:Claude",
     "google": "agno_spec_builder.providers.google:Gemini",

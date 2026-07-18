@@ -200,6 +200,81 @@ Resumable SSE requires AgentOS. HTTP clients start the run with `background=true
 
 Optional `build()` arguments are `db`, `skills_cache`, `tenant_namespace`, and `fanout_store`. The returned `Built` object contains all built objects and validated catalogs plus the graph-owned `db`, `schemas`, and `mcp_runner`.
 
+## Audio agents
+
+Audio-capable models are passed through to Agno unchanged. Use `modalities` and `audio` on the selected model for native text-and-audio responses, and configure Agno toolkits for transcription, text-to-speech, or research:
+
+```yaml
+models:
+  audio:
+    provider: openai
+    id: gpt-audio
+    modalities: [text, audio]
+    audio: {voice: sage, format: wav}
+
+  podcast:
+    provider: openai-responses
+    id: gpt-5.2
+
+toolsets:
+  - name: transcribe
+    type: openai
+    init:
+      transcription_model: gpt-4o-transcribe
+      enable_image_generation: false
+      enable_speech_generation: false
+  - name: openrouter-tts
+    type: openai
+    init:
+      api_key: ${env.OPENROUTER_API_KEY}
+      base_url: https://openrouter.ai/api/v1
+      text_to_speech_model: hexgrad/kokoro-82m
+      text_to_speech_voice: alloy
+      text_to_speech_format: mp3
+      enable_transcription: false
+      enable_image_generation: false
+  - name: podcast-voice
+    type: elevenlabs
+    init:
+      voice_id: JBFqnCBsd6RMkjVDRZzb
+      model_id: eleven_multilingual_v2
+      target_directory: audio_generations
+  - name: research
+    type: firecrawl
+
+agents:
+  - name: Audio Conversation
+    model: {id: audio}
+    add_history_to_context: true
+  - name: Blog to Podcast
+    model: {id: podcast}
+    tools: [openrouter-tts, research]
+  - name: Transcriber
+    model: {id: podcast}
+    tools: [transcribe]
+```
+
+`openai` is included. The normal `openai` toolset uses Agno's `OpenAITools`; setting `init.base_url` selects the compatible wrapper, which forwards the URL to the OpenAI SDK and yields an `AudioChunkEvent` for every TTS response chunk. Python consumers receive raw bytes; JSON/SSE clients receive the normal Agno base64 serialization. The final success string is the tool result passed back to the model. ElevenLabs and Firecrawl remain lazy optional dependencies: install them only when those `toolsets` are used with `pip install 'agno-spec-builder[audio]'`. Supply media to native Agno runs with `audio=[Audio(content=audio_bytes, format="wav")]`; audio-capable model responses arrive in `RunOutput.response_audio`.
+
+```python
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
+
+from agno_spec_builder.tools.openai import AudioChunkEvent
+
+app = FastAPI()
+
+
+@app.get("/tts")
+async def tts(text: str):
+    async def generate():
+        async for event in await agent.arun(text, stream=True):
+            if isinstance(event, AudioChunkEvent):
+                yield event.audio[0].content
+
+    return StreamingResponse(generate(), media_type="audio/mpeg")
+```
+
 ## A2A toolsets
 
 Declare a remote A2A client once, then attach it to an agent through `tools`:

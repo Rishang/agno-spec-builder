@@ -64,7 +64,21 @@ skills:
       - Don't pad. Every sentence earns its place.
 
 # --------------------------- TOOLSETS ---------------------------
-# A named remote A2A agent becomes available through `tools: [research-agent]`.
+# The OpenAI-compatible toolkit streams each TTS chunk as an AudioChunkEvent
+# while an agent run uses `stream=True`; see the README for a FastAPI relay.
+# toolsets:
+#   - name: openrouter-tts
+#     type: openai
+#     init:
+#       api_key: ${env.OPENROUTER_API_KEY}
+#       base_url: https://openrouter.ai/api/v1
+#       text_to_speech_model: hexgrad/kokoro-82m
+#       text_to_speech_voice: alloy
+#       text_to_speech_format: mp3
+#       enable_transcription: false
+#       enable_image_generation: false
+
+# A named remote A2A agent can also become available through `tools: [research-agent]`.
 # toolsets:
 #   - name: research-agent
 #     type: a2a
@@ -112,6 +126,16 @@ agents:
       `seek search` / `seek fetch`). Never guess.
     skills:
       - teach
+
+  - name: speaker
+    model:
+      id: default
+    tools:
+      - name: openrouter-tts
+        include_tools: [generate_speech]
+    instructions: |
+      When the user asks for audio, call generate_speech with the exact text
+      they want spoken. The caller receives audio chunks while this run streams.
 
   - name: writer
     model:
