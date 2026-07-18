@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class McpServerConfig(BaseModel):
     # Remote HTTP MCP is the default shape (`type: http`, `url`, `headers`).
     # stdio (`command` + `env`) remains for local dev only. Secrets in headers/env
-    # use `$VAR`, `${VAR}`, or `${input:var}` → env today (e.g. github_mcp_pat →
+    # use `${env.VAR}` or `${input:var}` → env today (e.g. github_mcp_pat →
     # GITHUB_MCP_PAT). DB-backed secrets are planned, not wired yet.
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
@@ -30,7 +30,7 @@ class McpServerConfig(BaseModel):
     headers: dict[str, str] = Field(
         default_factory=dict,
         description=(
-            "HTTP headers sent to the server. Secrets: use '$VAR', '${VAR}', or '${input:var}' (resolved from env)."
+            "HTTP headers sent to the server. Secrets: use '${env.VAR}' or '${input:var}' (resolved from env)."
         ),
     )
     # stdio-only (legacy local servers, e.g. npx …)

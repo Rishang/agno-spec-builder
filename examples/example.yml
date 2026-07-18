@@ -24,7 +24,7 @@ providers:
     kind: models
     spec:
       base_url: https://opencode.ai/zen/v1
-      api_key: ${OPENROUTER_API_KEY}
+      api_key: ${env.OPENROUTER_API_KEY}
 
 models:
   - name: default
@@ -153,7 +153,7 @@ workflows:
 # webhooks:
 #   - name: grafana-alerts
 #     path: grafana-alerts
-#     secret: ${GRAFANA_WEBHOOK_SECRET}
+#     secret: ${env.GRAFANA_WEBHOOK_SECRET}
 #     secret_header: X-Grafana-Token
 #     triggers:
 #       - kind: agent

@@ -29,7 +29,7 @@ The ``db`` block mirrors :class:`ProviderConfig`'s shape (``kind`` + ``spec``)
 and lets the YAML pick the AgentOS database backend without forcing the caller
 to construct a ``BaseDb`` instance by hand. ``spec`` is a free-form dict whose
 keys are forwarded to the chosen db class constructor; secret refs
-(``$VAR``, ``${VAR}``) are expanded at build time via
+(``${env.VAR}``) are expanded at build time via
 :func:`agno_spec_builder.utils.expand_env`. When ``db`` is omitted,
 :func:`build_agentos` falls back to ``runtime.db`` (the db injected into
 :func:`build`), preserving the existing injection escape hatch.
@@ -84,7 +84,7 @@ class AgentOsDbConfig(BaseModel):
     authors can pick a db backend the same way they pick a model provider.
     ``spec`` is a free-form dict (``ConfigDict(extra="allow")``): any kwarg the
     chosen db class constructor accepts can be set here. Secret refs
-    (``$VAR``, ``${VAR}``, ``${input:var}``) are expanded at build time.
+    (``${env.VAR}``, ``${input:var}``) are expanded at build time.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -101,7 +101,7 @@ class AgentOsDbConfig(BaseModel):
         description=(
             "Constructor kwargs for the chosen db class "
             "(db_file, db_url, db_engine, table names, …). "
-            "Secret refs ($VAR, ${VAR}, ${input:var}) are expanded at build time."
+            "Secret refs (${env.VAR}, ${input:var}) are expanded at build time."
         ),
     )
 
@@ -136,7 +136,7 @@ class AgentOsConfig(BaseModel):
         default=None,
         description=(
             "Optional stable AgentOS identifier. Environment references "
-            "(``$VAR`` or ``${VAR}``) are expanded when AgentOS is constructed."
+            "(``${env.VAR}``) are expanded when AgentOS is constructed."
         ),
     )
     a2a_interface: bool = Field(

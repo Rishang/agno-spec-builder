@@ -12,11 +12,11 @@ def is_identifier(value: str) -> bool:
     return bool(re.fullmatch(r"[A-Za-z0-9_]+", value))
 
 
-_ENV_REF = re.compile(r"\$\{input:(\w+)\}|\$\{(\w+)\}|\$([A-Za-z_]\w*)")
+_ENV_REF = re.compile(r"\$\{input:(\w+)\}|\$\{env\.([A-Za-z_]\w*)\}")
 
 
 def expand_env(value: Any) -> Any:
-    """Expand ``$VAR``, ``${VAR}``, and ``${input:var}`` recursively."""
+    """Expand ``${env.VAR}`` and ``${input:var}`` recursively."""
 
     def env(name: str) -> str:
         if name in os.environ:
@@ -29,13 +29,13 @@ def expand_env(value: Any) -> Any:
 
         def replace(match: re.Match[str]) -> str:
             input_key = match.group(1)
-            name = input_key or match.group(2) or match.group(3)
+            name = input_key or match.group(2)
             try:
                 return env(name)
             except KeyError:
                 if input_key:
                     raise ValueError(f"MCP secret ${{input:{input_key}}} not set; define {name.upper()}") from None
-                raise ValueError(f"environment variable ${name} is referenced but not set") from None
+                raise ValueError(f"environment variable ${{env.{name}}} is referenced but not set") from None
 
         return "$".join(_ENV_REF.sub(replace, part) for part in value.split("$$"))
     if isinstance(value, dict):

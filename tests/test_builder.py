@@ -4,6 +4,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, call, patch
 
@@ -20,6 +21,7 @@ from agno_spec_builder.builders.schemas import SchemaBuilder
 from agno_spec_builder.imports import resolve_symbol
 from agno_spec_builder.schemas import AgentConfig, ProviderConfig
 from agno_spec_builder.schemas.model import ModelConfig
+from agno_spec_builder.tools.a2a import A2ATools
 from agno_spec_builder.webhooks import attach_webhook_routes
 
 try:
@@ -196,9 +198,11 @@ class BuilderTests(unittest.TestCase):
             provider = ProviderConfig(
                 name="custom",
                 kind="models",
-                spec={"api_key": "$SPEC_BUILDER_TEST_KEY"},
+                spec={"api_key": "${env.SPEC_BUILDER_TEST_KEY}"},
             )
             self.assertEqual(provider.resolved_spec(), {"api_key": "secret"})
+            legacy = ProviderConfig(name="legacy", kind="models", spec={"api_key": "$SPEC_BUILDER_TEST_KEY"})
+            self.assertEqual(legacy.resolved_spec(), {"api_key": "$SPEC_BUILDER_TEST_KEY"})
         finally:
             os.environ.pop("SPEC_BUILDER_TEST_KEY", None)
 
@@ -290,6 +294,27 @@ class BuilderTests(unittest.TestCase):
         self.assertIs(first, second)
         self.assertEqual(resolve_symbol.cache_info().hits, 1)
         self.assertEqual(resolve_symbol.cache_info().misses, 1)
+
+    @patch("agno_spec_builder.tools.a2a.A2AClient")
+    def test_a2a_tool_sends_messages_with_configured_headers(self, mock_client):
+        mock_client.return_value.send_message = AsyncMock(return_value=SimpleNamespace(content="remote result"))
+        tool = A2ATools(
+            "http://localhost:8080/a2a",
+            name="research_agent",
+            headers={"X-Tenant": "acme"},
+        )
+
+        result = asyncio.run(tool.ask("Research this", user_id="tenant-user"))
+
+        self.assertEqual(result, "remote result")
+        mock_client.assert_called_once_with("http://localhost:8080/a2a", timeout=30, protocol="rest")
+        mock_client.return_value.send_message.assert_awaited_once_with(
+            "Research this",
+            context_id=None,
+            user_id="tenant-user",
+            metadata=None,
+            headers={"X-Tenant": "acme"},
+        )
 
 
 if __name__ == "__main__":

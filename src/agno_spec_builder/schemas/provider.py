@@ -12,7 +12,7 @@ Kinds:
 - db        → merged into agno Db constructors (reserved; not wired yet)
 
 `spec` is a free-form dict (ConfigDict(extra="allow")): any kwarg the provider's
-constructor accepts can be set here. Secret refs (`$VAR`, `${VAR}`, `${input:var}`)
+constructor accepts can be set here. Secret refs (`${env.VAR}`, `${input:var}`)
 are expanded at build time via src.utils.expand_env.
 """
 
@@ -39,7 +39,7 @@ class ProviderConfig(BaseModel):
         default_factory=dict,
         description=(
             "Constructor kwargs for the provider's underlying class "
-            "(base_url, api_key, extra_headers, …). Secret refs ($VAR, ${VAR}, "
+            "(base_url, api_key, extra_headers, …). Secret refs (${env.VAR}, "
             "${input:var}) are expanded at build time."
         ),
     )

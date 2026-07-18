@@ -123,7 +123,7 @@ concurrently.
 webhooks:
   - name: grafana-alerts
     path: grafana-alerts
-    secret: ${GRAFANA_WEBHOOK_SECRET}
+    secret: ${env.GRAFANA_WEBHOOK_SECRET}
     secret_header: X-Grafana-Token
     triggers:
       - kind: agent
