@@ -8,6 +8,10 @@ project: research-desk
 
 agentos:
   enabled: true
+  # Publish every built agent, team, and workflow through Agno's A2A routes.
+  a2a_interface: false
+  # Publish every built agent and team through resource-specific AG-UI routes.
+  agui_interface: false
   server:
     port: 8000
   db:

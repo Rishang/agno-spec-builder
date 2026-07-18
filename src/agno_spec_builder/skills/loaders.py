@@ -1,5 +1,6 @@
+import asyncio
 import re
-from typing import Any
+from typing import Any, ClassVar
 
 import yaml
 from agno.skills.errors import SkillValidationError
@@ -92,8 +93,26 @@ class LocalPathSkills(SkillLoader):
     Code's `argument-hint`) load on a best-effort basis, matching GithubSkills.
     """
 
+    _preloaded: ClassVar[dict[str, list[Skill]]] = {}
+
     def __init__(self, skills: list[SkillConfig]):
         self.paths = [s.path for s in skills if s.path]
+
+    @classmethod
+    async def preload(cls, path: str) -> list[Skill]:
+        """Load one local skill path outside the event-loop thread."""
+        if path not in cls._preloaded:
+            cls._preloaded[path] = await asyncio.to_thread(LocalSkills(path, validate=False).load)
+        return cls._preloaded[path]
+
+    @classmethod
+    async def apreload(cls, paths: set[str]) -> None:
+        """Warm every declared local skill path before an agent can run."""
+        path_list = tuple(paths)
+        results = await asyncio.gather(*(cls.preload(path) for path in path_list), return_exceptions=True)
+        for path, result in zip(path_list, results, strict=True):
+            if isinstance(result, Exception):
+                log.warning(f"Skipping local skill path {path}: {result}")
 
     def load(self) -> list[Skill]:
         skills: list[Skill] = []
@@ -101,7 +120,8 @@ class LocalPathSkills(SkillLoader):
             try:
                 # validate=False mirrors GithubSkills' lenient mode: extra
                 # frontmatter keys are kept as-is rather than rejected.
-                skills.extend(LocalSkills(path, validate=False).load())
+                loaded = self._preloaded[path] if path in self._preloaded else LocalSkills(path, validate=False).load()
+                skills.extend(loaded)
             except Exception as e:
                 log.warning(f"Skipping local skill path {path}: {e}")
         log.debug(f"Loaded {len(skills)} skills from local paths")

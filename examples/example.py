@@ -4,6 +4,7 @@ Build the runtime graph and start AgentOS:
     uv run python examples/example.py
 """
 
+import asyncio
 from pathlib import Path
 
 import yaml
@@ -25,9 +26,9 @@ def validate() -> BaseSchema:
     return spec
 
 
-def build_runtime(spec: BaseSchema):
+async def build_runtime(spec: BaseSchema):
     """Build live Agno objects from the already-validated root."""
-    runtime = build(spec)
+    runtime = await build(spec)
     print("built agents:", list(runtime.agents))
     print("built teams:", list(runtime.teams))
     print("built workflows:", list(runtime.workflows))
@@ -35,14 +36,20 @@ def build_runtime(spec: BaseSchema):
     return runtime
 
 
-if __name__ == "__main__":
+def main() -> None:
     validated = validate()
-    runtime = build_runtime(validated)
-    agent_os = build_agentos(runtime)
+    runtime = asyncio.run(build_runtime(validated))
+    agent_os = asyncio.run(build_agentos(runtime))
     if agent_os is None:
         raise RuntimeError("AgentOS is disabled; set agentos.enabled: true in the spec.")
     print("starting AgentOS:", runtime.agentos.server.host, runtime.agentos.server.port)
+    # AgentOS.serve() owns a uvicorn event loop, so it must run after the
+    # asynchronous build coroutines have completed.
     agent_os.serve(app=agent_os.get_app(), **runtime.agentos.server.model_dump())
+
+
+if __name__ == "__main__":
+    main()
 
 # Extension registries stay available from their owning modules:
 # from agno_spec_builder.builders.agents import MODEL_PROVIDERS

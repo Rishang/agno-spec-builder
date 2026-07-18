@@ -1,6 +1,7 @@
 """Skill source ABC — remote SKILL.md fetchers for the skill cache."""
 
 from abc import ABC, abstractmethod
+from asyncio import to_thread
 
 
 class SkillSource(ABC):
@@ -9,6 +10,10 @@ class SkillSource(ABC):
     @abstractmethod
     def fetch(self, source: str) -> list[dict]:
         """Return [{path, content}, ...] SKILL.md blobs for a source key."""
+
+    async def afetch(self, source: str) -> list[dict]:
+        """Asynchronously fetch skill blobs, preserving sync-source compatibility."""
+        return await to_thread(self.fetch, source)
 
     def catalog_sources(self, raw: dict) -> list[str]:
         """Unique source keys from the config skills section."""

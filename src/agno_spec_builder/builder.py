@@ -1,5 +1,6 @@
 """Top-level declarative Agno graph builder."""
 
+import asyncio
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -32,6 +33,7 @@ from agno_spec_builder.schemas import (
     SkillConfig,
 )
 from agno_spec_builder.skills.cache import SkillCache, skill_cache
+from agno_spec_builder.skills.loaders import LocalPathSkills
 from agno_spec_builder.utils import expand_env, log
 from agno_spec_builder.workflow.store import FanoutStateStore, InMemoryFanoutStore
 
@@ -77,7 +79,7 @@ def _vector_catalog(section: list[NamedProviderSpec] | dict[str, dict[str, Any]]
     return dict(section)
 
 
-def _load_source(source: str | Path | dict | BaseSchema) -> BaseSchema:
+def _load_source_sync(source: str | Path | dict | BaseSchema) -> BaseSchema:
     """Parse and validate one supported source form.
 
     ``str`` values are interpreted as inline JSON when they begin with ``{``,
@@ -107,21 +109,30 @@ def _load_source(source: str | Path | dict | BaseSchema) -> BaseSchema:
     return BaseSchema.model_validate(raw)
 
 
-def build(
-    source: str | Path | dict | BaseSchema,
-    db: BaseDb | None = None,
-    skills_cache: SkillCache = skill_cache,
-    tenant_namespace: str | None = None,
-    fanout_store: FanoutStateStore | None = None,
-) -> Built:
-    """Build a runtime graph from an authoritative :class:`BaseSchema` root.
+async def _load_source(source: str | Path | dict | BaseSchema) -> BaseSchema:
+    """Validate a source without blocking the caller's event loop."""
+    return await asyncio.to_thread(_load_source_sync, source)
 
-    ``source`` may be a YAML path, mapping, or prevalidated ``BaseSchema``. A
-    fresh :class:`agno.db.in_memory.InMemoryDb` is used unless ``db`` is supplied.
-    The result owns its MCP runner and fan-out state, allowing multiple independent
-    graphs in one process without application globals.
-    """
-    root = _load_source(source)
+
+async def _warm_skills(root: BaseSchema, skills_cache: SkillCache) -> None:
+    """Fetch remote and local skills before Agno's synchronous loaders run."""
+    github_sources = {skill.github for skill in root.skills if skill.github}
+    if github_sources:
+        await asyncio.gather(*(skills_cache.aresolve(source) for source in github_sources))
+
+    local_paths = {skill.path for skill in root.skills if skill.path}
+    if local_paths:
+        await LocalPathSkills.apreload(local_paths)
+
+
+def _build_from_root(
+    root: BaseSchema,
+    db: BaseDb | None,
+    skills_cache: SkillCache,
+    tenant_namespace: str | None,
+    fanout_store: FanoutStateStore | None,
+) -> Built:
+    """Synchronously assemble Agno objects outside the event-loop thread."""
     db = db or InMemoryDb()
     fanout_store = fanout_store or InMemoryFanoutStore()
 
@@ -193,6 +204,33 @@ def build(
     )
 
 
+async def build(
+    source: str | Path | dict | BaseSchema,
+    db: BaseDb | None = None,
+    skills_cache: SkillCache = skill_cache,
+    tenant_namespace: str | None = None,
+    fanout_store: FanoutStateStore | None = None,
+) -> Built:
+    """Build a runtime graph from an authoritative :class:`BaseSchema` root.
+
+    ``source`` may be a YAML path, mapping, or prevalidated ``BaseSchema``. A
+    fresh :class:`agno.db.in_memory.InMemoryDb` is used unless ``db`` is supplied.
+    The result owns its MCP runner and fan-out state, allowing multiple independent
+    graphs in one process without application globals. Agno's synchronous object
+    construction runs in a worker thread so callers do not block their event loop.
+    """
+    root = await _load_source(source)
+    await _warm_skills(root, skills_cache)
+    return await asyncio.to_thread(
+        _build_from_root,
+        root,
+        db,
+        skills_cache,
+        tenant_namespace,
+        fanout_store,
+    )
+
+
 def _build_agentos_db(config: "AgentOsConfig") -> BaseDb | None:
     """Resolve the AgentOS database from the declarative ``agentos.db`` block.
 
@@ -229,14 +267,50 @@ def _build_agentos_db(config: "AgentOsConfig") -> BaseDb | None:
     raise ValueError(f"unsupported agentos db kind: {kind!r}")
 
 
-def build_agentos(runtime: Built, **kwargs: Any):
+def _build_agentos_sync(runtime: Built, kwargs: dict[str, Any]):
+    """Construct AgentOS outside the event-loop thread."""
+    if not runtime.agentos.enabled:
+        return None
+
+    # Imported lazily so the spec-builder package keeps working in
+    # environments that pin agno without the os extra.
+    from agno.os import AgentOS
+
+    db = _build_agentos_db(runtime.agentos)
+    if db is None:
+        db = runtime.db
+
+    knowledge_list = [k for k in runtime.knowledge.values() if k is not None]
+    a2a_interface = kwargs.pop("a2a_interface", runtime.agentos.a2a_interface)
+    agentos_id = expand_env(runtime.agentos.id) if runtime.agentos.id else None
+    if runtime.agentos.agui_interface and runtime.agentos.agui_interface is not False:
+        from agno.os.interfaces.agui import AGUI
+
+        interfaces = list(kwargs.pop("interfaces", []) or [])
+        interfaces.extend(AGUI(agent=agent, prefix=f"/agui/agents/{slug}") for slug, agent in runtime.agents.items())
+        interfaces.extend(AGUI(team=team, prefix=f"/agui/teams/{slug}") for slug, team in runtime.teams.items())
+        kwargs["interfaces"] = interfaces
+
+    return AgentOS(
+        id=agentos_id,
+        agents=list(runtime.agents.values()),
+        teams=list(runtime.teams.values()),
+        workflows=list(runtime.workflows.values()),
+        db=db,
+        knowledge=knowledge_list or None,
+        a2a_interface=a2a_interface,
+        **kwargs,
+    )
+
+
+async def build_agentos(runtime: Built, **kwargs: Any):
     """Construct an :class:`agno.os.AgentOS` from a built runtime graph.
 
     Returns ``None`` when ``runtime.agentos.enabled`` is ``False`` so callers
     can write::
 
-        runtime = build(Path("config.yml"))
-        os = build_agentos(runtime)
+        runtime = await build(Path("config.yml"))
+        os = await build_agentos(runtime)
         if os is not None:
             os.serve(app=os.get_app(), **runtime.agentos.server.model_dump())
 
@@ -254,28 +328,12 @@ def build_agentos(runtime: Built, **kwargs: Any):
     ``**kwargs`` are forwarded verbatim to the ``AgentOS`` constructor, so
     callers can toggle any OS-level flag the spec doesn't model yet — e.g.
     ``build_agentos(runtime, authorization=True, tracing=True, scheduler=True)``.
+    A caller-supplied ``a2a_interface`` overrides the declarative setting.
+    When ``runtime.agentos.agui_interface`` is enabled, generated AG-UI
+    interfaces are appended to any caller-provided ``interfaces``.
     ``kwargs`` that collide with the forwarded components (``agents``,
     ``teams``, ``workflows``, ``db``, ``knowledge``) raise ``TypeError`` from
     ``AgentOS.__init__`` (duplicate keyword), which is the desired fail-loud
     behavior.
     """
-    if not runtime.agentos.enabled:
-        return None
-
-    # Imported lazily so the spec-builder package keeps working in
-    # environments that pin agno without the os extra.
-    from agno.os import AgentOS
-
-    db = _build_agentos_db(runtime.agentos)
-    if db is None:
-        db = runtime.db
-
-    knowledge_list = [k for k in runtime.knowledge.values() if k is not None]
-    return AgentOS(
-        agents=list(runtime.agents.values()),
-        teams=list(runtime.teams.values()),
-        workflows=list(runtime.workflows.values()),
-        db=db,
-        knowledge=knowledge_list or None,
-        **kwargs,
-    )
+    return await asyncio.to_thread(_build_agentos_sync, runtime, kwargs)

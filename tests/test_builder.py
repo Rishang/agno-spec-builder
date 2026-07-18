@@ -1,18 +1,38 @@
+import asyncio
+import importlib
 import os
 import tempfile
 import unittest
 from pathlib import Path
 from typing import Any, cast
+from unittest.mock import call, patch
 
 from agno.db.in_memory import InMemoryDb
 from pydantic import ValidationError
 
-from agno_spec_builder import BaseSchema, build
+from agno_spec_builder import BaseSchema
+from agno_spec_builder import build as async_build
+from agno_spec_builder import build_agentos as async_build_agentos
 from agno_spec_builder.builders.agents import MODEL_PROVIDERS
 from agno_spec_builder.builders.schemas import SchemaBuilder
 from agno_spec_builder.imports import resolve_symbol
 from agno_spec_builder.schemas import AgentConfig, ProviderConfig
 from agno_spec_builder.schemas.model import ModelConfig
+
+try:
+    importlib.import_module("agno.os.interfaces.agui")
+except ImportError:
+    _AGUI_AVAILABLE = False
+else:
+    _AGUI_AVAILABLE = True
+
+
+def build(*args, **kwargs):
+    return asyncio.run(async_build(*args, **kwargs))
+
+
+def build_agentos(*args, **kwargs):
+    return asyncio.run(async_build_agentos(*args, **kwargs))
 
 
 class BuilderTests(unittest.TestCase):
@@ -113,6 +133,47 @@ class BuilderTests(unittest.TestCase):
         self.assertEqual(spec.models, {})
         self.assertEqual(spec.mcp, [])
         self.assertEqual(spec.workflows, [])
+
+    @patch("agno.os.AgentOS")
+    def test_build_agentos_forwards_a2a_interface_configuration(self, mock_agent_os):
+        disabled = build({"agentos": {"enabled": True}})
+        build_agentos(disabled)
+        self.assertFalse(mock_agent_os.call_args.kwargs["a2a_interface"])
+
+        enabled = build({"agentos": {"enabled": True, "a2a_interface": True}})
+        build_agentos(enabled)
+        self.assertTrue(mock_agent_os.call_args.kwargs["a2a_interface"])
+
+    @unittest.skipUnless(_AGUI_AVAILABLE, "ag-ui optional dependency is not installed")
+    @patch("agno.os.AgentOS")
+    @patch("agno.os.interfaces.agui.AGUI")
+    def test_build_agentos_generates_agui_interfaces(self, mock_agui, mock_agent_os):
+        disabled = build({"agentos": {"enabled": True}})
+        build_agentos(disabled)
+        self.assertNotIn("interfaces", mock_agent_os.call_args.kwargs)
+
+        enabled = build(
+            {
+                "agentos": {"enabled": True, "agui_interface": True},
+                "models": {"default": {"provider": "fake", "id": "offline"}},
+                "agents": [{"name": "Researcher", "model": {"id": "default"}}],
+                "teams": [{"name": "Research Team", "members": ["researcher"]}],
+            }
+        )
+        custom_interface = object()
+        build_agentos(enabled, interfaces=[custom_interface])
+
+        self.assertEqual(
+            mock_agui.call_args_list,
+            [
+                call(agent=enabled.agents["researcher"], prefix="/agui/agents/researcher"),
+                call(team=enabled.teams["research-team"], prefix="/agui/teams/research-team"),
+            ],
+        )
+        self.assertEqual(
+            mock_agent_os.call_args.kwargs["interfaces"],
+            [custom_interface, mock_agui.return_value, mock_agui.return_value],
+        )
 
     def test_load_source_supports_all_documented_input_forms(self):
         validated = BaseSchema(project="validated")

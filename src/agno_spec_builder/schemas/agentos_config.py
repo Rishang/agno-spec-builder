@@ -12,6 +12,8 @@ Shape (YAML)::
 
     agentos:
       enabled: true
+      a2a_interface: true
+      agui_interface: true
       server:
         port: 8000
       db:
@@ -109,8 +111,10 @@ class AgentOsConfig(BaseModel):
 
     ``enabled`` gates whether the parent application should serve the built
     graph over AgentOS at all. When enabled, ``server`` carries the uvicorn
-    kwargs that ``AgentOS.serve`` accepts, and ``db`` optionally picks the
-    AgentOS database backend.
+    kwargs that ``AgentOS.serve`` accepts, ``a2a_interface`` enables Agno's
+    Agent-to-Agent protocol routes for every built resource,
+    ``agui_interface`` enables Agent-User Interaction routes for built agents
+    and teams, and ``db`` optionally picks the AgentOS database backend.
 
     AgentOS-level concerns that overlap with what :func:`build` already
     produces (agents, teams, workflows, knowledge) are intentionally not
@@ -126,6 +130,27 @@ class AgentOsConfig(BaseModel):
             "Whether the parent application should serve the built graph via "
             "``agno.os.AgentOS``. When ``False`` (the default), the ``server`` "
             "and ``db`` blocks are ignored."
+        ),
+    )
+    id: str | None = Field(
+        default=None,
+        description=(
+            "Optional stable AgentOS identifier. Environment references "
+            "(``$VAR`` or ``${VAR}``) are expanded when AgentOS is constructed."
+        ),
+    )
+    a2a_interface: bool = Field(
+        default=False,
+        description=(
+            "Expose all built agents, teams, and workflows through Agno's "
+            "Agent-to-Agent (A2A) interface. Requires the ``a2a-sdk`` package."
+        ),
+    )
+    agui_interface: bool = Field(
+        default=False,
+        description=(
+            "Expose all built agents and teams through Agno's Agent-User Interaction "
+            "(AG-UI) interface. Workflows are not supported. Requires ``ag-ui-protocol``."
         ),
     )
     server: AgentOsServerConfig = Field(

@@ -1,5 +1,5 @@
+import asyncio
 import os
-import subprocess
 import time
 
 from agno.tools import Toolkit
@@ -25,7 +25,7 @@ class BashTools(Toolkit):
             **kwargs,
         )
 
-    def run_shell_command(self, command: str, timeout: int | None = None) -> str:
+    async def run_shell_command(self, command: str, timeout: int | None = None) -> str:
         """Execute a shell command and return formatted stdout, stderr, and exit code.
 
         Runs commands via the system shell. Supports pipes, redirects, and quoting
@@ -45,19 +45,21 @@ class BashTools(Toolkit):
 
         try:
             # ["bash", "-c", ...] so pipes/redirects/quoting work as documented.
-            process = subprocess.run(
-                ["bash", "-c", command],
+            process = await asyncio.create_subprocess_exec(
+                "bash",
+                "-c",
+                command,
                 cwd=self.cwd,
                 env=self.env,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(process.communicate(), timeout=timeout)
 
             elapsed = time.perf_counter() - start
 
-            stdout = process.stdout.strip()
-            stderr = process.stderr.strip()
+            stdout = stdout_bytes.decode(errors="replace").strip()
+            stderr = stderr_bytes.decode(errors="replace").strip()
 
             if len(stdout) > self.max_output:
                 stdout = stdout[: self.max_output] + "\n... (truncated)"
@@ -78,11 +80,13 @@ class BashTools(Toolkit):
 
             return "\n\n".join(parts)
 
-        except subprocess.TimeoutExpired as e:
+        except TimeoutError:
+            process.kill()
+            stdout_bytes, stderr_bytes = await process.communicate()
             return (
                 f"Command timed out after {timeout} seconds.\n\n"
-                f"Partial stdout:\n{(e.stdout or '').strip()}\n\n"
-                f"Partial stderr:\n{(e.stderr or '').strip()}"
+                f"Partial stdout:\n{stdout_bytes.decode(errors='replace').strip()}\n\n"
+                f"Partial stderr:\n{stderr_bytes.decode(errors='replace').strip()}"
             )
 
         except Exception as e:

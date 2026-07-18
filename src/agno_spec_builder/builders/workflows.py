@@ -264,7 +264,7 @@ class WorkflowStepBuilder:
             # error-pause/retry. Persist every completed and paused branch before
             # raising, so a restart or UI feedback never replays finished work.
             run_id = run_context.run_id
-            state = self.fanout_store.load(run_id) or {
+            state = await self.fanout_store.load(run_id) or {
                 "items": items,
                 "results": [None] * len(items),
                 "paused": {},
@@ -332,7 +332,7 @@ class WorkflowStepBuilder:
             finally:
                 await task
 
-            self.fanout_store.save(run_id, getattr(run_context, "workflow_id", "") or "", c.name, state)
+            await self.fanout_store.save(run_id, getattr(run_context, "workflow_id", "") or "", c.name, state)
             if state["paused"]:
                 questions = []
                 for index, data in state["paused"].items():
@@ -350,7 +350,7 @@ class WorkflowStepBuilder:
                 raise FanoutPaused(f"{c.name} is awaiting feedback from {len(state['paused'])} branch(es)")
 
             results = state["results"]
-            self.fanout_store.delete(run_id)
+            await self.fanout_store.delete(run_id)
             if event := _emit(c, ns, results):
                 yield event
             yield StepOutput(content=results)
