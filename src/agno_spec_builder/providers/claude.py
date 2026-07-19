@@ -15,7 +15,7 @@ class Claude(_Claude):
 
     def __post_init__(self):
         if not provider_settings.enable_prompt_cache:
-            self.cache_system_prompt = False
+            self.cache_system_prompt = False  # pyright: ignore
             self.cache_tools = False
         ttl = "1h" if self.extended_cache_time else "5m"
         log.debug(
