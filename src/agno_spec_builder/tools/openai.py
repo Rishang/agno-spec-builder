@@ -43,4 +43,3 @@ class OpenAICompatibleTools(_OpenAITools):
                 yield AudioChunkEvent(
                     audio=[Audio(id=str(uuid4()), content=chunk, mime_type=f"audio/{self.tts_format}")]
                 )
-

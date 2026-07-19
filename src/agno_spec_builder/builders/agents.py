@@ -1,5 +1,4 @@
 import copy
-import inspect
 
 from agno.agent import Agent
 from agno.db.base import BaseDb
@@ -9,28 +8,18 @@ from agno.skills import Skills
 from agno.tools import Toolkit
 
 from agno_spec_builder.builders.schemas import SchemaBuilder
-from agno_spec_builder.hooks import HOOK_REGISTRY, TOOL_HOOK_BUILDERS
+from agno_spec_builder.hooks import HOOK_REGISTRY
+from agno_spec_builder.hooks.tools import build_tool_hooks, log_tool_use
 from agno_spec_builder.imports import resolve_symbol
-from agno_spec_builder.schemas import AgentConfig, ModelConfig, ProviderConfig, SkillConfig, ToolHookRef, ToolRef
+from agno_spec_builder.schemas import AgentConfig, ModelConfig, ProviderConfig, SkillConfig, ToolRef
 from agno_spec_builder.skills.cache import SkillCache, skill_cache
 from agno_spec_builder.skills.registry import skill_registry
 from agno_spec_builder.tools import TOOL_REGISTRY
-from agno_spec_builder.utils import log, resolve
+from agno_spec_builder.utils import resolve
 
 
 def _as_ref(entry: str | ToolRef) -> ToolRef:
     return entry if isinstance(entry, ToolRef) else ToolRef(name=entry)
-
-
-def _build_tool_hooks(refs: list[ToolHookRef]) -> list:
-    """Resolve YAML tool_hooks entries via TOOL_HOOK_BUILDERS."""
-    out = []
-    for ref in refs:
-        builder = TOOL_HOOK_BUILDERS.get(ref.name)
-        if builder is None:
-            raise ValueError(f"Unknown tool_hook {ref.name!r}. known={list(TOOL_HOOK_BUILDERS)}")
-        out.append(builder(ref.model_dump(exclude_none=True)))
-    return out
 
 
 def filter_tools(tools: list, ref: ToolRef) -> list:
@@ -56,17 +45,6 @@ def filter_tools(tools: list, ref: ToolRef) -> list:
         elif ok(getattr(tool, "name", "")):
             out.append(tool)
     return out
-
-
-async def log_tool_use(function_name, function_call, arguments):
-    """Tool hook: log every tool/skill call (skills, plain tools, and MCP tools).
-    Async-only — requires arun(); sync agent.run() will get an unawaited coroutine.
-    inspect.isawaitable handles sync tools correctly on the arun() path."""
-    log.info(f"using {function_name}({arguments})")
-    result = function_call(**arguments)
-    if inspect.isawaitable(result):
-        result = await result
-    return result
 
 
 # Provider name (from YAML) -> "module:ClassName". Imported lazily in build_model
@@ -188,7 +166,7 @@ def build_agent(
         else:
             (kwargs["learning"],) = resolve([config.learning], learning or {})
     if config.skills or tools or config.mcp or config.workflow_tools or config.tool_hooks:
-        kwargs["tool_hooks"] = [log_tool_use, *_build_tool_hooks(config.tool_hooks)]
+        kwargs["tool_hooks"] = [log_tool_use, *build_tool_hooks(config.tool_hooks)]
     if config.input_schema:
         kwargs["input_schema"] = schemas.output_schema(config.input_schema)
     if config.output_schema:

@@ -23,6 +23,7 @@ TOOL_REGISTRY: dict[str, Function | Toolkit] = {
     "ask_user": UserFeedbackTools(),
 }
 
+
 def _agno_toolset(target: str, **kwargs) -> Toolkit:
     """Build an optional Agno toolkit without importing its SDK until selected."""
     kwargs.pop("name", None)  # these Agno toolkits provide their own Toolkit name

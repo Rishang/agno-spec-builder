@@ -264,9 +264,7 @@ class StepConfig(BaseModel):
 
         if self.allow_multiple_selections and self.router is not True:
             raise ValueError("`allow_multiple_selections` is only valid with `router: true`")
-        if not self.requires_user_input and (
-            self.user_input_message is not None or self.user_input_schema is not None
-        ):
+        if not self.requires_user_input and (self.user_input_message is not None or self.user_input_schema is not None):
             raise ValueError("user input message/schema requires `requires_user_input: true`")
         return self
 

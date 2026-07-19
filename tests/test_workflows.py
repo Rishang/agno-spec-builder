@@ -194,9 +194,7 @@ class RouterWorkflowTests(unittest.TestCase):
             StepConfig.model_validate({"name": "route", "router": '"one"', "choices": [choice, choice]})
         with self.assertRaisesRegex(ValidationError, "only valid on a router"):
             StepConfig.model_validate({"name": "not_a_router", "run": "agent.one", "choices": [choice]})
-        implicit_hitl = StepConfig.model_validate(
-            {"name": "route", "router": True, "branches": {"one": choice}}
-        )
+        implicit_hitl = StepConfig.model_validate({"name": "route", "router": True, "branches": {"one": choice}})
         self.assertTrue(implicit_hitl.requires_user_input)
         with self.assertRaisesRegex(ValidationError, "requires `requires_user_input: true`"):
             StepConfig.model_validate(
@@ -241,9 +239,7 @@ class RouterWorkflowTests(unittest.TestCase):
             )
         for invalid_router in (False, 1):
             with self.subTest(router=invalid_router), self.assertRaises(ValidationError):
-                StepConfig.model_validate(
-                    {"name": "route", "router": invalid_router, "branches": {"one": choice}}
-                )
+                StepConfig.model_validate({"name": "route", "router": invalid_router, "branches": {"one": choice}})
         with self.assertRaisesRegex(ValidationError, "either `router` or `case`"):
             StepConfig.model_validate(
                 {"name": "route", "router": '"one"', "case": '"one"', "branches": {"one": choice}}

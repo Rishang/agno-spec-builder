@@ -6,8 +6,8 @@ from agno.models.base import Model
 from agno.skills import Skills
 from agno.team import Team, TeamMode
 
-from agno_spec_builder.builders.agents import log_tool_use
 from agno_spec_builder.builders.schemas import SchemaBuilder
+from agno_spec_builder.hooks.tools import log_tool_use
 from agno_spec_builder.schemas import ModelConfig, SkillConfig, TeamConfig
 from agno_spec_builder.skills.cache import SkillCache, skill_cache
 from agno_spec_builder.skills.registry import skill_registry

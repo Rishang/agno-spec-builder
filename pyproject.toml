@@ -19,7 +19,7 @@ dependencies = [
 
 [project.optional-dependencies]
 ag-ui = ["ag-ui-protocol>=0.1.19"]
-dev = ["ruff==0.15.20"]
+dev = ["ruff>=0.15.20","pytest>=9.0.3"]
 
 [project.scripts]
 agno-spec-builder = "agno_spec_builder.cli:main"
