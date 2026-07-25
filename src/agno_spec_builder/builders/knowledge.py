@@ -112,12 +112,6 @@ def build_knowledge(
 
     db = db or InMemoryDb()
     vdb_spec = expand_env(dict(cfg.vector_db))
-    if namespace:
-        # These are the collection identifiers used by the supported vector
-        # adapters. Keep the logical knowledge-base name stable for YAML refs.
-        for key in ("collection", "collection_name", "table_name"):
-            if isinstance(vdb_spec.get(key), str):
-                vdb_spec[key] = f"{namespace}__{vdb_spec[key]}"
     if cfg.embedder:
         vdb_spec["embedder"] = build_embedder(cfg.embedder, embedders, providers)
     # Merge a matching vectordb provider profile's spec. The profile is looked up
@@ -126,15 +120,32 @@ def build_knowledge(
     from agno_spec_builder.builders.providers import resolve_provider_spec
 
     vdb_provider = vdb_spec.get("provider")
-    provider_kw = resolve_provider_spec(vdb_provider, "vectordb", providers)
-    for k, v in provider_kw.items():
-        vdb_spec.setdefault(k, v)
-    if isinstance(vdb_spec.get("reranker"), dict):
-        vdb_spec["reranker"] = _load(RERANKERS, vdb_spec["reranker"], "reranker")
+    vdb_spec = {**resolve_provider_spec(vdb_provider, "vectordb", providers), **vdb_spec}
+
+    if vdb_provider == "lancedb" and "table_name" not in vdb_spec and "table" not in vdb_spec:
+        # If no table_name/table is specified, use the knowledge name slugified.
+        from agno_spec_builder.utils import slugify
+
+        vdb_spec["table_name"] = slugify(cfg.name)
+
+    if namespace:
+        # These are the collection identifiers used by the supported vector
+        # adapters. Keep the logical knowledge-base name stable for YAML refs.
+        for key in ("collection", "collection_name", "table_name"):
+            if isinstance(vdb_spec.get(key), str):
+                vdb_spec[key] = f"{namespace}__{vdb_spec[key]}"
+
+    if isinstance(reranker := vdb_spec.get("reranker"), dict):
+        vdb_spec["reranker"] = _load(RERANKERS, reranker, "reranker")
     if isinstance(vdb_spec.get("search_type"), str):
         from agno.vectordb.search import SearchType
 
         vdb_spec["search_type"] = SearchType(vdb_spec["search_type"])
+    if isinstance(vdb_spec.get("distance"), str):
+        from agno.vectordb.distance import Distance
+
+        vdb_spec["distance"] = Distance(vdb_spec["distance"])
+
     extras = cfg.model_dump(exclude={"name", "description", "max_results", "vector_db", "embedder", "chunking"})
     if cfg.chunking and (readers := _chunked_readers(cfg.chunking)):
         extras.setdefault("readers", readers)

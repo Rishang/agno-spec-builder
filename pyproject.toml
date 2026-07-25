@@ -7,7 +7,7 @@ requires-python = ">=3.12"
 license = { text = "MIT" }
 dependencies = [
     "a2a-sdk>=1.1.1",
-    "agno[os,sqlite]==2.7.2",
+    "agno[os,sqlite]==2.8.2",
     "cel-python==0.5.0",
     "fastapi==0.139.0",
     "jmespath==1.1.0",
@@ -20,6 +20,7 @@ dependencies = [
 [project.optional-dependencies]
 ag-ui = ["ag-ui-protocol>=0.1.19"]
 dev = ["ruff>=0.15.20","pytest>=9.0.3"]
+lancedb = ["lancedb>=0.20.0"]
 
 [project.scripts]
 agno-spec-builder = "agno_spec_builder.cli:main"

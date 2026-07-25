@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import Mock, patch
 
-from agno_spec_builder.tools.openai import OpenAICompatibleTools
+from agno_spec_builder.tools.openai import AudioChunkEvent, OpenAICompatibleTools
 
 
 class _StreamingResponse:
@@ -39,6 +39,7 @@ class OpenAICompatibleToolsTests(unittest.TestCase):
             input="Hello! This is a text-to-speech test.",
             response_format="mp3",
         )
-        self.assertEqual([event.audio[0].content for event in events[:-1]], [b"first", b"second"])
-        self.assertTrue(all(event.audio[0].mime_type == "audio/mp3" for event in events[:-1]))
+        chunks = [event.audio[0] for event in events if isinstance(event, AudioChunkEvent) and event.audio]
+        self.assertEqual([chunk.content for chunk in chunks], [b"first", b"second"])
+        self.assertTrue(all(chunk.mime_type == "audio/mp3" for chunk in chunks))
         self.assertEqual(events[-1], "Speech streamed successfully.")

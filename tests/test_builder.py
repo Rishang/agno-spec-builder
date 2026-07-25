@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from agno.db.in_memory import InMemoryDb
 from fastapi import FastAPI
@@ -213,6 +213,45 @@ class BuilderTests(unittest.TestCase):
                 "agno.tools.firecrawl:FirecrawlTools",
             ],
         )
+
+    def test_toolset_provider_ref_merges_connection_kwargs_under_init(self):
+        captured: dict[str, Any] = {}
+        toolkit = MagicMock()
+
+        def fake_factory(name, **init):
+            captured.update(init)
+            return toolkit
+
+        with patch.dict(TOOLSET_REGISTRY, {"conn-tool": fake_factory}):
+            runtime = build(
+                {
+                    "providers": [
+                        {
+                            "name": "openrouter",
+                            "kind": "models",
+                            "spec": {"base_url": "https://openrouter.ai/api/v1", "api_key": "secret"},
+                        }
+                    ],
+                    "toolsets": [
+                        {
+                            "name": "tts",
+                            "type": "conn-tool",
+                            "provider": "openrouter",
+                            "init": {"text_to_speech_model": "kokoro", "api_key": "override-wins"},
+                        }
+                    ],
+                }
+            )
+
+        self.assertEqual(
+            captured,
+            {
+                "base_url": "https://openrouter.ai/api/v1",
+                "api_key": "override-wins",
+                "text_to_speech_model": "kokoro",
+            },
+        )
+        self.assertIs(runtime.toolsets["tts"], toolkit)
 
     def test_a2a_toolset_is_available_to_declaring_agent(self):
         runtime = build(
@@ -462,6 +501,44 @@ class BuilderTests(unittest.TestCase):
             user_id="tenant-user",
             metadata=None,
             headers={"X-Tenant": "acme"},
+        )
+
+    @patch("agno_spec_builder.builders.knowledge.resolve_symbol")
+    def test_build_knowledge_constructs_lancedb_vector_provider(self, mock_resolve_symbol):
+        from agno.vectordb.distance import Distance
+        from agno.vectordb.search import SearchType
+
+        from agno_spec_builder.builders.knowledge import build_knowledge
+        from agno_spec_builder.schemas.knowledge import KnowledgeConfig
+
+        mock_lancedb_cls = MagicMock()
+        mock_resolve_symbol.return_value = mock_lancedb_cls
+
+        cfg = KnowledgeConfig(
+            name="Docs Knowledge",
+            description="Documentation knowledge base",
+            max_results=5,
+            vector_db={"provider": "lancedb", "search_type": "hybrid", "distance": "cosine"},
+        )
+        providers = {
+            "lancedb": ProviderConfig(
+                name="lancedb",
+                kind="vectordb",
+                spec={"uri": "/tmp/lancedb_test", "api_key": "secret-key"},
+            )
+        }
+
+        knowledge = build_knowledge(cfg, providers=providers, namespace="acme")
+
+        self.assertEqual(knowledge.name, "Docs Knowledge")
+        self.assertEqual(knowledge.description, "Documentation knowledge base")
+        self.assertEqual(knowledge.max_results, 5)
+        mock_lancedb_cls.assert_called_once_with(
+            uri="/tmp/lancedb_test",
+            api_key="secret-key",
+            table_name="acme__docs-knowledge",
+            search_type=SearchType.hybrid,
+            distance=Distance.cosine,
         )
 
 

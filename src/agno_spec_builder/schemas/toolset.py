@@ -12,6 +12,10 @@ class ToolsetConfig(BaseModel):
 
     name: str = Field(min_length=1, description="Unique toolset name referenced from an agent's `tools` list.")
     type: str = Field(min_length=1, description="Key in `TOOLSET_REGISTRY`.")
+    provider: str | None = Field(
+        default=None,
+        description="Optional models provider profile; its spec is merged before `init`, which wins on conflicts.",
+    )
     init: dict[str, Any] = Field(
         default_factory=dict,
         description="Constructor keyword arguments for the toolset factory.",

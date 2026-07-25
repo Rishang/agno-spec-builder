@@ -4,7 +4,7 @@ import asyncio
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 from agno.agent import Agent
@@ -111,7 +111,8 @@ class Built:
             return await self.mcp_runner.invoke(resource, input, **run_kwargs)
         # Agno returns an async iterator, not an awaitable, for stream=True.
         # Keep the outer coroutine awaitable while handing that iterator to callers.
-        result = resource.arun(input, **run_kwargs)
+        # The resource union's `arun` overloads do not unify, but share this runtime shape.
+        result = cast(Any, resource).arun(input, **run_kwargs)
         return result if effective_stream else await result
 
     async def aget_run_output(
@@ -223,6 +224,12 @@ def _build_from_root(
         if factory is None:
             raise ValueError(f"unknown toolset type {config.type!r}; available={list(TOOLSET_REGISTRY)}")
         init = expand_env(config.init)
+        # Merge an optional models profile; explicit toolset init wins.
+        if config.provider:
+            from agno_spec_builder.builders.providers import resolve_provider_spec
+
+            provider_kw = resolve_provider_spec(config.provider, "models", providers)
+            init = {**provider_kw, **init}
         if "name" in init:
             raise ValueError("toolset `init` cannot set `name`; use the entry's top-level `name`")
         toolsets[config.name] = factory(name=config.name, **init)

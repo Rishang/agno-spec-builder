@@ -251,7 +251,7 @@ Extend the package by mutating these public registries **before** calling `build
 | `FanoutStateStore` (Protocol) | `workflow/store.py` | injected via `build(fanout_store=...)` |
 | `BaseDb` (Agno) | — | injected via `build(db=...)` |
 
-Toolset factories are always invoked as `factory(name=<yaml name>, **expand_env(init))`; `init` may not set `name`.
+Toolset factories are always invoked as `factory(name=<yaml name>, **expand_env(init))`; `init` may not set `name`. A toolset's optional `provider:` names a `models`-kind provider profile whose resolved `spec` is merged under `init` (init wins on conflicts), so a toolset reuses a connection already declared under `providers:` instead of repeating secrets.
 
 ---
 

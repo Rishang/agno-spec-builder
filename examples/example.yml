@@ -66,12 +66,13 @@ skills:
 # --------------------------- TOOLSETS ---------------------------
 # The OpenAI-compatible toolkit streams each TTS chunk as an AudioChunkEvent
 # while an agent run uses `stream=True`; see the README for a FastAPI relay.
+# `provider: openrouter` reuses the connection profile declared under
+# `providers:` above — no need to repeat `api_key` / `base_url` here.
 # toolsets:
 #   - name: openrouter-tts
 #     type: openai
+#     provider: openrouter
 #     init:
-#       api_key: ${env.OPENROUTER_API_KEY}
-#       base_url: https://openrouter.ai/api/v1
 #       text_to_speech_model: hexgrad/kokoro-82m
 #       text_to_speech_voice: alloy
 #       text_to_speech_format: mp3

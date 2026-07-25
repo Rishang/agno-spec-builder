@@ -225,9 +225,8 @@ toolsets:
       enable_speech_generation: false
   - name: openrouter-tts
     type: openai
+    provider: openrouter        # reuse the `providers:` profile below — no duplicated secrets
     init:
-      api_key: ${env.OPENROUTER_API_KEY}
-      base_url: https://openrouter.ai/api/v1
       text_to_speech_model: hexgrad/kokoro-82m
       text_to_speech_voice: alloy
       text_to_speech_format: mp3
@@ -242,6 +241,13 @@ toolsets:
   - name: research
     type: firecrawl
 
+providers:
+  - name: openrouter
+    kind: models
+    spec:
+      base_url: https://openrouter.ai/api/v1
+      api_key: ${env.OPENROUTER_API_KEY}
+
 agents:
   - name: Audio Conversation
     model: {id: audio}
@@ -254,7 +260,7 @@ agents:
     tools: [transcribe]
 ```
 
-`openai` is included. The normal `openai` toolset uses Agno's `OpenAITools`; setting `init.base_url` selects the compatible wrapper, which forwards the URL to the OpenAI SDK and yields an `AudioChunkEvent` for every TTS response chunk. Python consumers receive raw bytes; JSON/SSE clients receive the normal Agno base64 serialization. The final success string is the tool result passed back to the model. ElevenLabs and Firecrawl remain lazy optional dependencies: install them only when those `toolsets` are used with `pip install 'agno-spec-builder[audio]'`. Supply media to native Agno runs with `audio=[Audio(content=audio_bytes, format="wav")]`; audio-capable model responses arrive in `RunOutput.response_audio`.
+`openai` uses Agno's `OpenAITools`; `init.base_url` or a `models` `provider:` profile selects the compatible streaming wrapper. Provider `spec` is merged before `init`, so toolset values override shared credentials. Each TTS chunk is an `AudioChunkEvent` (raw bytes in Python; normal Agno base64 for JSON/SSE); the final success string is the tool result. ElevenLabs and Firecrawl remain lazy optional dependencies: install them only when those `toolsets` are used with `pip install 'agno-spec-builder[audio]'`. Supply media to native Agno runs with `audio=[Audio(content=audio_bytes, format="wav")]`; audio-capable model responses arrive in `RunOutput.response_audio`.
 
 ```python
 from fastapi import FastAPI

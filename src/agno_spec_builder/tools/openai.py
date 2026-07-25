@@ -31,7 +31,7 @@ class OpenAICompatibleTools(_OpenAITools):
         self.base_url = base_url
         super().__init__(**kwargs)
 
-    def generate_speech(self, agent: Agent | Team, text_input: str) -> Iterator[AudioChunkEvent | str]:
+    def generate_speech(self, agent: Agent | Team, text_input: str) -> Iterator[AudioChunkEvent | str]:  # ty:ignore[invalid-method-override]
         """Stream TTS chunks as Agno custom events for ``agent.arun(stream=True)``."""
         with OpenAI(api_key=self.api_key, base_url=self.base_url).audio.speech.with_streaming_response.create(
             model=self.tts_model,
@@ -43,3 +43,4 @@ class OpenAICompatibleTools(_OpenAITools):
                 yield AudioChunkEvent(
                     audio=[Audio(id=str(uuid4()), content=chunk, mime_type=f"audio/{self.tts_format}")]
                 )
+        yield "Speech streamed successfully."
